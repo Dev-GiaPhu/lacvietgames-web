@@ -4,8 +4,19 @@
 
   const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   const byId = (id) => document.getElementById(id);
+
+  const headingCopy = form.querySelector(".form-heading p");
+  if (headingCopy) {
+    headingCopy.textContent = "Điền thông tin để nhận mã email. Tài khoản chỉ được tạo sau khi xác thực đúng.";
+  }
+
+  const submitLabel = form.querySelector("button[type=submit] span");
+  if (submitLabel) submitLabel.textContent = "Gửi mã xác nhận";
+
+  if (new URLSearchParams(window.location.search).get("tab") === "register") {
+    byId("registerTab")?.click();
+  }
 
   function showStatus(message, type = "error") {
     const box = byId("appStatus");
@@ -76,8 +87,10 @@
     }
 
     const button = form.querySelector("button[type=submit]");
+    const label = button.querySelector("span");
     button.disabled = true;
     button.classList.add("loading");
+    if (label) label.textContent = "Đang gửi mã...";
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/Accounts/register`, {
@@ -114,6 +127,7 @@
     } finally {
       button.disabled = false;
       button.classList.remove("loading");
+      if (label) label.textContent = "Gửi mã xác nhận";
     }
   }
 
