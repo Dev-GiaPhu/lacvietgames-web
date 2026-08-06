@@ -3,120 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Đăng ký, xác minh email và quản lý tài khoản LacVietGames">
-  <meta name="theme-color" content="#4f46e5">
-  <title>LacVietGames Account</title>
+  <meta name="description" content="Khám phá web game và game tải về trên LacVietGames.">
+  <meta name="theme-color" content="#070b16">
+  <title>LacVietGames — Nền tảng game Việt</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./store.css">
 </head>
-<body>
-  <main class="page-shell">
-    <section class="brand-panel" aria-label="Giới thiệu LacVietGames">
-      <div class="brand-mark"><span>LV</span> LacVietGames</div>
-      <div class="brand-copy">
-        <span class="eyebrow">LacVietGames account portal</span>
-        <h1>Một tài khoản.<br>Mọi trải nghiệm game.</h1>
-        <p>Đăng ký nhanh, xác minh email an toàn và quản lý mật khẩu trong một giao diện thống nhất của LacVietGames.</p>
-      </div>
-      <div class="feature-list">
-        <div class="feature"><span>✓</span><div><strong>Xác minh email</strong><small>Mã bảo mật có thời hạn</small></div></div>
-        <div class="feature"><span>✓</span><div><strong>Mật khẩu mã hóa</strong><small>Không lưu mật khẩu dạng thô</small></div></div>
-        <div class="feature"><span>✓</span><div><strong>Khôi phục thuận tiện</strong><small>Nhận mã trực tiếp qua email</small></div></div>
-      </div>
-      <div class="orb orb-one"></div><div class="orb orb-two"></div>
-    </section>
-
-    <section class="auth-section">
-      <div class="auth-card">
-        <div id="appStatus" class="status-message" role="status" aria-live="polite"></div>
-
-        <div id="authPanel">
-          <div class="mobile-brand"><span>LV</span> LacVietGames</div>
-          <div class="tabs" role="tablist">
-            <button id="loginTab" class="tab active" type="button" role="tab" aria-selected="true">Đăng nhập</button>
-            <button id="registerTab" class="tab" type="button" role="tab" aria-selected="false">Đăng ký</button>
-          </div>
-
-          <form id="loginForm" class="form-panel active" novalidate>
-            <div class="form-heading"><h2>Chào mừng trở lại</h2><p>Đăng nhập để tiếp tục vào tài khoản LacVietGames.</p></div>
-            <label class="field"><span>Email</span><input id="loginEmail" type="email" autocomplete="email" placeholder="ban@example.com" required><small class="field-error"></small></label>
-            <label class="field"><span>Mật khẩu</span><div class="password-wrap"><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu" required><button class="toggle-password" data-target="loginPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <div class="form-row"><label class="check"><input id="rememberMe" type="checkbox"><span>Ghi nhớ đăng nhập</span></label><button id="forgotLink" class="text-button" type="button">Quên mật khẩu?</button></div>
-            <button class="primary-button" type="submit"><span>Đăng nhập</span><i></i></button>
-            <p class="switch-copy">Chưa có tài khoản? <button class="text-button" data-show="register" type="button">Đăng ký ngay</button></p>
-          </form>
-
-          <form id="registerForm" class="form-panel" novalidate>
-            <div class="form-heading"><h2>Tạo tài khoản mới</h2><p>Điền thông tin và xác nhận email để tham gia LacVietGames.</p></div>
-            <label class="field"><span>Họ và tên</span><input id="registerName" type="text" autocomplete="name" placeholder="Nguyễn Văn A" required><small class="field-error"></small></label>
-            <label class="field"><span>Email</span><input id="registerEmail" type="email" autocomplete="email" placeholder="ban@example.com" required><small class="field-error"></small></label>
-            <label class="field"><span>Mật khẩu</span><div class="password-wrap"><input id="registerPassword" type="password" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự" required><button class="toggle-password" data-target="registerPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <label class="field"><span>Xác nhận mật khẩu</span><div class="password-wrap"><input id="registerConfirm" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu" required><button class="toggle-password" data-target="registerConfirm" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <label class="check terms"><input id="acceptTerms" type="checkbox"><span>Tôi đồng ý với điều khoản sử dụng và chính sách bảo mật.</span></label>
-            <small id="termsError" class="standalone-error"></small>
-            <button class="primary-button" type="submit"><span>Tạo tài khoản</span><i></i></button>
-            <p class="switch-copy">Đã có tài khoản? <button class="text-button" data-show="login" type="button">Đăng nhập</button></p>
-          </form>
-        </div>
-
-        <section id="verifyPanel" class="sub-panel" hidden>
-          <div class="panel-icon">✉</div>
-          <div class="form-heading centered"><span class="eyebrow dark">Xác minh email</span><h2>Kiểm tra hộp thư</h2><p>Nhập mã 6 chữ số đã gửi đến <strong id="verifyEmailLabel"></strong>.</p></div>
-          <form id="verifyForm" novalidate><input id="verifyEmail" type="hidden"><label class="field"><span>Mã xác nhận</span><input id="verifyCode" class="code-input" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required><small class="field-error"></small></label><button class="primary-button" type="submit"><span>Xác nhận email</span><i></i></button></form>
-          <div class="panel-actions"><button id="resendCode" class="text-button" type="button">Gửi lại mã</button><button class="text-button muted" data-back-login type="button">Quay lại đăng nhập</button></div>
-        </section>
-
-        <section id="forgotPanel" class="sub-panel" hidden>
-          <div class="panel-icon">↻</div>
-          <div class="form-heading centered"><span class="eyebrow dark">Khôi phục tài khoản</span><h2>Quên mật khẩu?</h2><p>Nhập email để nhận mã đặt lại mật khẩu.</p></div>
-          <form id="forgotForm" novalidate><label class="field"><span>Email</span><input id="forgotEmail" type="email" autocomplete="email" placeholder="ban@example.com" required><small class="field-error"></small></label><button class="primary-button" type="submit"><span>Gửi mã khôi phục</span><i></i></button></form>
-          <button class="text-button panel-back" data-back-login type="button">← Quay lại đăng nhập</button>
-        </section>
-
-        <section id="resetPanel" class="sub-panel" hidden>
-          <div class="form-heading"><span class="eyebrow dark">Mật khẩu mới</span><h2>Đặt lại mật khẩu</h2><p>Mã khôi phục có hiệu lực trong 15 phút.</p></div>
-          <form id="resetForm" novalidate>
-            <label class="field"><span>Email</span><input id="resetEmail" type="email" autocomplete="email" required><small class="field-error"></small></label>
-            <label class="field"><span>Mã khôi phục</span><input id="resetCode" class="code-input" inputmode="numeric" maxlength="6" placeholder="000000" required><small class="field-error"></small></label>
-            <label class="field"><span>Mật khẩu mới</span><div class="password-wrap"><input id="resetPassword" type="password" autocomplete="new-password" required><button class="toggle-password" data-target="resetPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <label class="field"><span>Xác nhận mật khẩu</span><div class="password-wrap"><input id="resetConfirm" type="password" autocomplete="new-password" required><button class="toggle-password" data-target="resetConfirm" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <button class="primary-button" type="submit"><span>Đặt lại mật khẩu</span><i></i></button>
-          </form>
-          <button class="text-button panel-back" data-back-login type="button">← Quay lại đăng nhập</button>
-        </section>
-
-        <section id="accountPanel" class="sub-panel" hidden>
-          <div class="account-header"><div class="avatar" id="accountAvatar">LV</div><div><span class="eyebrow dark">Đã đăng nhập</span><h2 id="accountName">Tài khoản</h2><p id="accountEmail"></p></div></div>
-          <div class="success-strip"><span>✓</span>Email đã được xác minh</div>
-          <form id="changePasswordForm" novalidate>
-            <h3>Đổi mật khẩu</h3>
-            <label class="field"><span>Mật khẩu hiện tại</span><div class="password-wrap"><input id="currentPassword" type="password" autocomplete="current-password" required><button class="toggle-password" data-target="currentPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <label class="field"><span>Mật khẩu mới</span><div class="password-wrap"><input id="newPassword" type="password" autocomplete="new-password" required><button class="toggle-password" data-target="newPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <label class="field"><span>Xác nhận mật khẩu mới</span><div class="password-wrap"><input id="confirmNewPassword" type="password" autocomplete="new-password" required><button class="toggle-password" data-target="confirmNewPassword" type="button">Hiện</button></div><small class="field-error"></small></label>
-            <button class="primary-button" type="submit"><span>Cập nhật mật khẩu</span><i></i></button>
-          </form>
-          <button id="logoutButton" class="secondary-button" type="button">Đăng xuất</button>
-        </section>
-      </div>
-    </section>
-  </main>
-
-  <div id="successModal" class="modal" hidden>
-    <div class="modal-backdrop"></div>
-    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="successTitle">
-      <div class="success-icon"><span>✓</span></div>
-      <span class="eyebrow dark">LacVietGames</span>
-      <h2 id="successTitle">Đăng ký thành công!</h2>
-      <p id="successMessage">Chúng tôi đã gửi mã xác nhận đến email của bạn.</p>
-      <button id="successPrimary" class="primary-button" type="button"><span>Nhập mã xác nhận</span><i></i></button>
-      <button id="successSecondary" class="text-button muted" type="button">Để sau</button>
-    </section>
-  </div>
-
+<body data-page="home">
+  <div id="siteHeader"></div>
+  <main id="app" class="page"></main>
+  <div id="siteFooter"></div>
   <script src="./config.js"></script>
-  <script src="./app.js"></script>
+  <script src="./games.js"></script>
+  <script src="./store.js"></script>
 </body>
 </html>
