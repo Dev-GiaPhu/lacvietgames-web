@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070b16">
+  <title>Đăng game | LacVietGames</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./store.css">
+  <link rel="stylesheet" href="./portal.css">
+</head>
+<body class="portal-page" data-page="publisher">
+  <header class="site-header">
+    <div class="topbar">
+      <a class="logo" href="./index.html"><span class="logo-mark">LV</span><span>LacVietGames</span></a>
+      <nav class="main-nav"><a href="./index.html">Trang chủ</a><a href="./catalog.html">Kho game</a><a class="active" href="./publisher.html">Đăng game</a></nav>
+      <div class="header-actions"><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập</button></div>
+    </div>
+  </header>
+
+  <main class="portal-shell">
+    <div class="portal-head">
+      <div><span class="eyebrow">Publisher Center</span><h1>Gửi game lên LacVietGames</h1><p>Điền thông tin game. Bản gửi sẽ được lưu vào database ở trạng thái Pending và chỉ xuất hiện ngoài cửa hàng sau khi Admin duyệt.</p></div>
+      <a class="btn btn-secondary" href="./index.html">← Cửa hàng</a>
+    </div>
+
+    <div id="publisherLoginRequired" class="portal-card" hidden>
+      <h2>Cần đăng nhập</h2><p>Bạn cần một tài khoản đã xác thực để gửi game.</p>
+      <button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập / Đăng ký</button>
+    </div>
+
+    <div id="publisherContent" class="portal-grid" hidden>
+      <section class="portal-card">
+        <h2>Thông tin game</h2>
+        <form id="gameSubmissionForm" class="portal-form">
+          <div class="two">
+            <label>Tên game<input id="gameName" required maxlength="160" placeholder="Tên game"></label>
+            <label>Nhà phát hành<input id="publisherName" required maxlength="160" placeholder="Studio / Nhà phát hành"></label>
+          </div>
+          <div class="three">
+            <label>Loại game<select id="gameType"><option value="web">Web game</option><option value="download">Game tải về</option></select></label>
+            <label>Giá Lạc Coin<input id="priceCoins" type="number" min="0" value="0"></label>
+            <label>Ngày phát hành<input id="releaseDate" type="date"></label>
+          </div>
+          <label>Mô tả ngắn<input id="shortDescription" maxlength="500" placeholder="Một câu giới thiệu ngắn"></label>
+          <label>Mô tả đầy đủ<textarea id="description" required placeholder="Giới thiệu gameplay, mục tiêu, điểm nổi bật..."></textarea></label>
+          <div class="two">
+            <label>Tags<input id="tags" placeholder="Casual, Puzzle, Giáo dục"></label>
+            <label>Ảnh bìa URL<input id="coverUrl" type="url" placeholder="https://..."></label>
+          </div>
+          <div class="three">
+            <label>Icon<input id="gameIcon" value="🎮" maxlength="32"></label>
+            <label>Badge<input id="badge" placeholder="Mới / Miễn phí"></label>
+            <label>Theme<input id="theme" value="default" placeholder="default"></label>
+          </div>
+          <label id="playUrlLabel">URL chạy Web Game<input id="playUrl" type="url" placeholder="https://.../index.html"></label>
+          <label id="downloadUrlLabel" hidden>URL tải game<input id="downloadUrl" type="url" placeholder="https://.../game.zip"></label>
+
+          <h3>Cấu hình đề nghị</h3>
+          <div class="two">
+            <label>Hệ điều hành<input id="reqOs" value="Trình duyệt hiện đại"></label>
+            <label>CPU<input id="reqCpu" value="Bất kỳ"></label>
+          </div>
+          <div class="three">
+            <label>RAM<input id="reqRam" value="2 GB"></label>
+            <label>GPU<input id="reqGpu" value="WebGL"></label>
+            <label>Dung lượng<input id="reqStorage" value="Không cần cài đặt"></label>
+          </div>
+
+          <div class="portal-note">Trang này gửi metadata và URL game lên server. File game dung lượng lớn không được lưu trên GitHub Pages/Railway volume; khi dùng file upload thật sẽ nối object storage riêng (R2/S3) và URL tạo ra sẽ tự điền vào đây.</div>
+          <div id="publisherStatus" class="portal-status"></div>
+          <button class="btn btn-primary" type="submit">Gửi game để Admin duyệt</button>
+        </form>
+      </section>
+
+      <aside class="portal-card">
+        <div class="portal-toolbar"><div><h2 style="margin:0">Game đã gửi</h2><small style="color:#8492ab">Theo dõi trạng thái xét duyệt</small></div><button id="refreshSubmissions" class="mini-btn" type="button">Làm mới</button></div>
+        <div id="submissionList" class="submission-list"></div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="./config.js"></script>
+  <script src="./publisher.js"></script>
+</body>
+</html>
