@@ -2,6 +2,153 @@ window.APP_CONFIG = {
   API_BASE_URL: "https://lacvietgames-api-production.up.railway.app"
 };
 
+/*
+ * Session authority
+ * - Không polling server.
+ * - Token v2 tự chứa thời hạn; trình duyệt kiểm tra thời hạn hoàn toàn local.
+ * - Mỗi request API có Authorization nếu nhận 401 sẽ xoá session ngay.
+ * - store-session.js vẫn chỉ xác minh /me một lần khi mở trang.
+ */
+(() => {
+  const STORE_KEY = "lacvietgamesStoreSession";
+  const LEGACY_KEY = "lacvietgamesSession";
+  const API_BASE = window.APP_CONFIG.API_BASE_URL.replace(/\/$/, "");
+  const RELOAD_KEY = "__lvg_session_refreshing";
+  let expiryTimer = null;
+  let invalidating = false;
+
+  function locate() {
+    for (const storage of [localStorage, sessionStorage]) {
+      try {
+        const raw = storage.getItem(STORE_KEY);
+        if (raw) return { storage, session: JSON.parse(raw) };
+      } catch {}
+    }
+    return null;
+  }
+
+  function read() {
+    return locate()?.session || null;
+  }
+
+  function clear() {
+    for (const storage of [localStorage, sessionStorage]) {
+      try {
+        storage.removeItem(STORE_KEY);
+        storage.removeItem(LEGACY_KEY);
+      } catch {}
+    }
+    if (expiryTimer) clearTimeout(expiryTimer);
+    expiryTimer = null;
+  }
+
+  function tokenExpiresAt(token) {
+    if (!token || typeof token !== "string" || !token.includes(".")) return null;
+    try {
+      const encoded = token.split(".", 1)[0].replace(/-/g, "+").replace(/_/g, "/");
+      const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4);
+      const payload = atob(padded);
+      const parts = payload.split("|");
+      if (parts.length !== 2) return null;
+      const ticks = BigInt(parts[1]);
+      const unixEpochTicks = 621355968000000000n;
+      const milliseconds = Number((ticks - unixEpochTicks) / 10000n);
+      return Number.isFinite(milliseconds) ? milliseconds : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function refreshLoggedOutUi() {
+    document.body?.classList.remove("server-authenticated");
+    window.dispatchEvent(new CustomEvent("lvg:session-invalid"));
+
+    // Reload đúng một lần để mọi trang (profile, wallet, library...) render lại
+    // từ trạng thái logout thay vì giữ HTML được dựng từ localStorage cũ.
+    if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) {
+      sessionStorage.setItem(RELOAD_KEY, "1");
+      location.reload();
+    }
+  }
+
+  function invalidate(reason = "invalid") {
+    if (invalidating) return;
+    invalidating = true;
+    const hadSession = !!read();
+    clear();
+    if (hadSession) refreshLoggedOutUi();
+    setTimeout(() => { invalidating = false; }, 0);
+  }
+
+  function scheduleExpiry() {
+    if (expiryTimer) clearTimeout(expiryTimer);
+    expiryTimer = null;
+    const session = read();
+    if (!session?.token) return;
+
+    const expiresAt = tokenExpiresAt(session.token);
+    if (!expiresAt) return;
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      invalidate("expired");
+      return;
+    }
+
+    // setTimeout của browser có giới hạn ~24.8 ngày; chia thành các lần local.
+    expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining + 50, 2_000_000_000));
+  }
+
+  // Token DataProtection cũ không còn hợp lệ sau khi backend chuyển sang v2.
+  const initial = read();
+  if (initial?.token && !initial.token.includes(".")) {
+    clear();
+  } else if (initial?.token) {
+    const expiresAt = tokenExpiresAt(initial.token);
+    if (expiresAt && expiresAt <= Date.now()) clear();
+  }
+
+  if (!read()) sessionStorage.removeItem(RELOAD_KEY);
+  scheduleExpiry();
+
+  window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry };
+
+  // Không tạo thêm request. Chỉ quan sát response của request API vốn đã được gọi.
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init) {
+    const response = await nativeFetch(input, init);
+    try {
+      const url = typeof input === "string" ? input : input?.url || "";
+      const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
+      if (response.status === 401 && url.startsWith(API_BASE) && headers.has("Authorization")) {
+        queueMicrotask(() => invalidate("server-unauthorized"));
+      }
+    } catch {}
+    return response;
+  };
+
+  // Logout ở tab khác được phản ánh ngay, không gọi server.
+  window.addEventListener("storage", event => {
+    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && read()) {
+      clear();
+      refreshLoggedOutUi();
+    }
+  });
+
+  // Khi quay lại tab chỉ kiểm tra hạn token local, không gọi API.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleExpiry();
+  });
+
+  // Một lần duy nhất sau lúc các script khởi động: nếu store-session.js vừa
+  // phát hiện phiên không hợp lệ và xoá storage thì refresh UI cũ.
+  const hadSessionAtBoot = !!initial?.token;
+  if (hadSessionAtBoot) {
+    setTimeout(() => {
+      if (!read() && !sessionStorage.getItem(RELOAD_KEY)) refreshLoggedOutUi();
+    }, 2500);
+  }
+})();
+
 const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `
   .header-actions > .coin-pill { display: none !important; }
@@ -16,7 +163,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2140";
+const version = "20260807-2133-session";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
@@ -28,7 +175,5 @@ loadScript("./registration-flow.js");
 loadScript("./store-session.js");
 loadScript("./account-enhancements.js");
 loadScript("./display-name-global.js");
-loadScript("./wallet-session-guard.js");
-loadScript("./header-session-fix.js");
 loadScript("./footer-links.js");
 loadScript("./protected-pages.js");
