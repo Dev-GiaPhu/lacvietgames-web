@@ -66,7 +66,7 @@
       .wallet-live{display:grid;gap:28px}.wallet-live-head{display:flex;justify-content:space-between;align-items:end;gap:20px}.wallet-live-head h1{margin:5px 0 0;font-size:clamp(34px,5vw,52px)}
       .wallet-balance-card{padding:30px 32px;border-radius:24px;background:linear-gradient(135deg,#5238c9,#2868cf);box-shadow:0 20px 55px rgba(26,52,137,.25)}.wallet-balance-card span{display:block;color:#d7defb}.wallet-balance-card strong{display:block;font-size:clamp(38px,6vw,58px);margin-top:8px}
       .wallet-live-section{background:#101620;border:1px solid #252e40;border-radius:22px;padding:24px}.wallet-live-section h2{margin:0 0 6px}.wallet-live-section>p{margin:0 0 18px;color:#8d9bb4}
-      .wallet-live-packs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}.wallet-live-pack{border:1px solid #29344a;background:#111824;color:#fff;border-radius:18px;padding:22px;text-align:left;cursor:pointer;transition:.18s;min-height:145px}.wallet-live-pack:hover{transform:translateY(-2px);border-color:#6688ef;background:#151f32}.wallet-live-pack:disabled{opacity:.55;cursor:wait;transform:none}.wallet-live-pack .wallet-coin-icon{font-size:27px}.wallet-live-pack strong{display:block;font-size:22px;margin:15px 0 6px}.wallet-live-pack small{color:#a9b8d5}
+      .wallet-live-packs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}.wallet-live-pack{border:1px solid #29344a;background:#111824;color:#fff;border-radius:18px;padding:22px;text-align:left;cursor:pointer;transition:.18s;min-height:165px}.wallet-live-pack:hover{transform:translateY(-2px);border-color:#6688ef;background:#151f32}.wallet-live-pack:disabled{opacity:.55;cursor:wait;transform:none}.wallet-live-pack .wallet-coin-icon{font-size:27px}.wallet-live-pack .pack-name{display:block;color:#8392ad;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:12px}.wallet-live-pack strong{display:block;font-size:22px;margin:5px 0 6px}.wallet-live-pack small{color:#a9b8d5}.wallet-live-pack .bonus{display:inline-block;margin-top:8px;padding:5px 8px;border-radius:999px;background:#173327;color:#7be6a6;font-size:11px;font-weight:800}
       .wallet-live-transactions{display:grid}.wallet-live-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:13px;align-items:center;padding:15px 0;border-bottom:1px solid #202a3b}.wallet-live-row:last-child{border-bottom:0}.wallet-live-row .tx-icon{width:38px;height:38px;border-radius:12px;background:#1a2436;display:grid;place-items:center}.wallet-live-row small{display:block;color:#8190aa;margin-top:4px}.wallet-live-row .plus{color:#70dda0}.wallet-live-row .minus{color:#ff8e9e}
       .wallet-live-empty{padding:28px;text-align:center;color:#8391a9}.wallet-live-error{padding:24px;border:1px solid #673b49;background:#24151c;border-radius:18px;color:#ffb0bb}.wallet-live-error button{margin-top:14px}
       .wallet-skeleton{display:grid;gap:28px}.wallet-skeleton .sk{background:linear-gradient(90deg,#101620 25%,#182234 37%,#101620 63%);background-size:400% 100%;animation:walletShimmer 1.3s ease infinite;border-radius:20px}.wallet-skeleton .sk-title{height:48px;width:280px}.wallet-skeleton .sk-balance{height:180px}.wallet-skeleton .sk-packs{height:190px}.wallet-skeleton .sk-history{height:220px}@keyframes walletShimmer{0%{background-position:100% 0}100%{background-position:0 0}}
@@ -98,7 +98,7 @@
       <div class="wallet-live">
         <div class="wallet-live-head"><div><span class="eyebrow">LACVIET WALLET</span><h1>Ví Lạc Coin</h1></div></div>
         <section class="wallet-balance-card"><span>Số dư khả dụng</span><strong>${fmt(wallet.balance)} LC</strong></section>
-        <section class="wallet-live-section"><h2>Nạp Lạc Coin</h2><p>Chọn gói Lạc Coin và thanh toán qua payOS.</p><div class="wallet-live-packs">${packageList.map(p => `<button class="wallet-live-pack" type="button" data-wallet-pack="${Number(p.coinAmount)}"><span class="wallet-coin-icon">🪙</span><strong>${fmt(p.coinAmount)} LC</strong><small>${money(p.amountVnd)}</small></button>`).join("")}</div></section>
+        <section class="wallet-live-section"><h2>Nạp Lạc Coin</h2><p>Chọn gói Lạc Coin và thanh toán qua payOS.</p><div class="wallet-live-packs">${packageList.length ? packageList.map(p => `<button class="wallet-live-pack" type="button" data-wallet-package-id="${Number(p.id)}"><span class="wallet-coin-icon">🪙</span><span class="pack-name">${esc(p.name || "Gói Lạc Coin")}</span><strong>${fmt(p.totalCoin ?? (Number(p.coinAmount || 0) + Number(p.bonusCoin || 0)))} LC</strong><small>${money(p.amountVnd)}</small>${Number(p.bonusCoin || 0) > 0 ? `<span class="bonus">+${fmt(p.bonusCoin)} LC thưởng</span>` : ""}</button>`).join("") : '<div class="wallet-live-empty">Hiện chưa có gói Lạc Coin đang mở bán.</div>'}</div></section>
         <section class="wallet-live-section"><h2>Lịch sử giao dịch</h2><div class="wallet-live-transactions">${transactions.length ? transactions.map(transactionRow).join("") : '<div class="wallet-live-empty">Chưa có giao dịch.</div>'}</div></section>
       </div>`;
   }
@@ -126,14 +126,14 @@
     }
   }
 
-  async function createPayment(button, coinAmount) {
+  async function createPayment(button, packageId) {
     const original = button.innerHTML;
     button.disabled = true;
     button.innerHTML = `<strong>Đang tạo thanh toán…</strong>`;
     try {
       const result = await api("/api/store/payments/orders", {
         method: "POST",
-        body: { coinAmount, provider: "payos" }
+        body: { packageId, provider: "payos" }
       });
       const checkoutUrl = result.data?.checkoutUrl;
       if (!checkoutUrl) throw new Error("Không nhận được đường dẫn thanh toán từ payOS.");
@@ -147,14 +147,13 @@
   }
 
   ensureStyle();
-  // Script này được đặt sau store.js, vì vậy nó là nguồn render cuối cùng của trang Ví.
   loadWallet();
 
   document.addEventListener("click", event => {
-    const pack = event.target.closest("[data-wallet-pack]");
+    const pack = event.target.closest("[data-wallet-package-id]");
     if (pack) {
-      const amount = Number(pack.dataset.walletPack);
-      if (Number.isInteger(amount) && amount > 0) createPayment(pack, amount);
+      const packageId = Number(pack.dataset.walletPackageId);
+      if (Number.isInteger(packageId) && packageId > 0) createPayment(pack, packageId);
       return;
     }
     if (event.target.closest("[data-wallet-retry]")) loadWallet();
