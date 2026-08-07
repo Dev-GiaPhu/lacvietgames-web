@@ -1,52 +1,26 @@
 (() => {
-  const apiBase = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
-
-  function locateSession() {
-    for (const storage of [localStorage, sessionStorage]) {
-      try {
-        const raw = storage.getItem("lacvietgamesStoreSession");
-        if (raw) return { storage, session: JSON.parse(raw) };
-      } catch {}
-    }
-    return null;
+  function readSession() {
+    return window.LVGSession?.read?.() || null;
   }
 
-  function applyName(name) {
+  function apply(session = readSession()) {
+    if (!session) return;
+    const name = session.effectiveDisplayName || session.displayName || session.name;
     if (!name) return;
     document.querySelectorAll(".account-btn span:last-child,[data-server-display-name]").forEach(el => {
       if (el.textContent !== name) el.textContent = name;
     });
   }
 
-  async function apply() {
-    const located = locateSession();
-    if (!located?.session?.token) return;
+  window.addEventListener("lvg:session-hydrated", event => apply(event.detail));
+  window.addEventListener("lvg:session-invalid", () => {});
 
-    // Sau lần lấy đầu tiên, tất cả trang dùng cache local. Không gọi API lại.
-    const cached = located.session.effectiveDisplayName || located.session.displayName;
-    if (cached) {
-      applyName(cached);
-      return;
-    }
+  const boot = () => {
+    apply();
+    // Một lần local sau khi header được render; không có network request.
+    setTimeout(() => apply(), 180);
+  };
 
-    try {
-      const response = await fetch(`${apiBase}/api/store/profile`, {
-        headers: { Authorization: `Bearer ${located.session.token}` }
-      });
-      if (!response.ok) return;
-      const payload = await response.json();
-      const profile = payload.data;
-      if (!profile) return;
-
-      located.session.displayName = profile.displayName || null;
-      located.session.effectiveDisplayName = profile.effectiveDisplayName || profile.name;
-      located.session.email = profile.email || located.session.email;
-      located.storage.setItem("lacvietgamesStoreSession", JSON.stringify(located.session));
-      applyName(located.session.effectiveDisplayName);
-    } catch {}
-  }
-
-  const boot = () => setTimeout(apply, 120);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
   else boot();
 })();
