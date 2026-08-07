@@ -23,3 +23,8 @@ const footerLinksScript = document.createElement("script");
 footerLinksScript.src = "./footer-links.js";
 footerLinksScript.defer = true;
 document.head.appendChild(footerLinksScript);
+
+const protectedPagesScript = document.createElement("script");
+protectedPagesScript.src = "./protected-pages.js";
+protectedPagesScript.defer = true;
+document.head.appendChild(protectedPagesScript);
