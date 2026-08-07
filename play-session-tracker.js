@@ -77,7 +77,7 @@
     if (!gameplayRequested || !playSession || ending || document.hidden) return;
     if (await restartExpiredLease()) return;
     try {
-      const response = await fetch(`${API}/api/store/play-sessions/lease`, {
+      const response = await fetch(`${API}/api/store/play-sessions/checkpoint`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: playSession.sessionId, clientToken: playSession.clientToken })
@@ -113,7 +113,7 @@
 
     if (beacon && navigator.sendBeacon) {
       try {
-        const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
+        const blob = new Blob([JSON.stringify(body)], { type: "text/plain;charset=UTF-8" });
         navigator.sendBeacon(`${API}/api/store/play-sessions/end-beacon`, blob);
       } catch {}
     } else {
