@@ -1,90 +1,56 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#070b16">
-  <title>Đăng game | LacVietGames</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b16">
+  <title>Publisher Center | LacVietGames</title><link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./store.css">
-  <link rel="stylesheet" href="./portal.css">
+  <link rel="stylesheet" href="./store.css"><link rel="stylesheet" href="./portal.css">
+  <style>
+    .publisher-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}.publisher-stat{background:#101620;border:1px solid #263047;border-radius:18px;padding:18px}.publisher-stat small{color:#8492ab}.publisher-stat strong{display:block;font-size:28px;margin-top:7px}.media-builder{display:grid;gap:12px}.media-item{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:start;padding:14px;border:1px solid #2a3650;border-radius:16px;background:#0d1421}.media-item select,.media-item input{width:100%;box-sizing:border-box}.media-preview{grid-column:2;display:flex;gap:10px;align-items:center;color:#8290aa;font-size:12px}.media-preview img,.media-preview video{width:120px;height:68px;object-fit:cover;border-radius:10px;background:#080d16}.media-upload{display:flex;gap:8px;flex-wrap:wrap}.publisher-game-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.publisher-game-card{padding:16px;border:1px solid #263047;border-radius:16px;background:#0e1521;margin-bottom:12px}.publisher-game-card h3{margin:0}.publisher-game-card .meta{color:#8290aa;font-size:13px;margin-top:6px}.media-help{font-size:12px;color:#8190aa;line-height:1.6}.version-list{margin-top:8px;color:#8d9ab0;font-size:12px}.portal-form input[type=file]{padding:9px}@media(max-width:980px){.publisher-stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:680px){.publisher-stats{grid-template-columns:1fr}.media-item{grid-template-columns:1fr}.media-preview{grid-column:1}}
+  </style>
 </head>
 <body class="portal-page" data-page="publisher">
-  <header class="site-header">
-    <div class="topbar">
-      <a class="logo" href="./index.html"><span class="logo-mark">LV</span><span>LacVietGames</span></a>
-      <nav class="main-nav"><a href="./index.html">Trang chủ</a><a href="./catalog.html">Kho game</a><a class="active" href="./publisher.html">Đăng game</a></nav>
-      <div class="header-actions"><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập</button></div>
-    </div>
-  </header>
+  <header class="site-header"><div class="topbar"><a class="logo" href="./index.html"><span class="logo-mark">LV</span><span>LacVietGames</span></a><nav class="main-nav"><a href="./index.html">Trang chủ</a><a href="./catalog.html">Kho game</a><a class="active" href="./publisher.html">Publisher</a></nav><div class="header-actions"><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập</button></div></div></header>
 
   <main class="portal-shell">
-    <div class="portal-head">
-      <div><span class="eyebrow">Publisher Center</span><h1>Gửi game lên LacVietGames</h1><p>Điền thông tin game. Bản gửi sẽ được lưu vào database ở trạng thái Pending và chỉ xuất hiện ngoài cửa hàng sau khi Admin duyệt.</p></div>
-      <a class="btn btn-secondary" href="./index.html">← Cửa hàng</a>
-    </div>
+    <div class="portal-head"><div><span class="eyebrow">Publisher Center</span><h1>Quản lý game của bạn</h1><p>Upload media trực tiếp object storage, gửi game để duyệt, sửa submission và phát hành version mới.</p></div><a class="btn btn-secondary" href="./index.html">← Cửa hàng</a></div>
 
-    <div id="publisherLoginRequired" class="portal-card" hidden>
-      <h2>Cần đăng nhập</h2><p>Bạn cần một tài khoản đã xác thực để gửi game.</p>
-      <button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập / Đăng ký</button>
-    </div>
+    <div id="publisherLoginRequired" class="portal-card" hidden><h2>Cần đăng nhập</h2><p>Bạn cần tài khoản đã xác thực để sử dụng Publisher Center.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập / Đăng ký</button></div>
 
-    <div id="publisherContent" class="portal-grid" hidden>
-      <section class="portal-card">
-        <h2>Thông tin game</h2>
-        <form id="gameSubmissionForm" class="portal-form">
-          <div class="two">
-            <label>Tên game<input id="gameName" required maxlength="160" placeholder="Tên game"></label>
-            <label>Nhà phát hành<input id="publisherName" required maxlength="160" placeholder="Studio / Nhà phát hành"></label>
-          </div>
-          <div class="three">
-            <label>Loại game<select id="gameType"><option value="web">Web game</option><option value="download">Game tải về</option></select></label>
-            <label>Giá Lạc Coin<input id="priceCoins" type="number" min="0" value="0"></label>
-            <label>Ngày phát hành<input id="releaseDate" type="date"></label>
-          </div>
-          <label>Mô tả ngắn<input id="shortDescription" maxlength="500" placeholder="Một câu giới thiệu ngắn"></label>
-          <label>Mô tả đầy đủ<textarea id="description" required placeholder="Giới thiệu gameplay, mục tiêu, điểm nổi bật..."></textarea></label>
-          <div class="two">
-            <label>Tags<input id="tags" placeholder="Casual, Puzzle, Giáo dục"></label>
-            <label>Ảnh bìa URL<input id="coverUrl" type="url" placeholder="https://..."></label>
-          </div>
-          <div class="three">
-            <label>Icon<input id="gameIcon" value="🎮" maxlength="32"></label>
-            <label>Badge<input id="badge" placeholder="Mới / Miễn phí"></label>
-            <label>Theme<input id="theme" value="default" placeholder="default"></label>
-          </div>
-          <label id="playUrlLabel">URL chạy Web Game<input id="playUrl" type="url" placeholder="https://.../index.html"></label>
-          <label id="downloadUrlLabel" hidden>URL tải game<input id="downloadUrl" type="url" placeholder="https://.../game.zip"></label>
+    <div id="publisherContent" hidden>
+      <div class="publisher-stats"><article class="publisher-stat"><small>Tổng game</small><strong id="pubTotal">0</strong></article><article class="publisher-stat"><small>Published</small><strong id="pubPublished">0</strong></article><article class="publisher-stat"><small>Pending</small><strong id="pubPending">0</strong></article><article class="publisher-stat"><small>Lượt mua</small><strong id="pubPurchases">0</strong></article><article class="publisher-stat"><small>Doanh thu</small><strong id="pubRevenue">0 LC</strong></article></div>
 
-          <h3>Cấu hình đề nghị</h3>
-          <div class="two">
-            <label>Hệ điều hành<input id="reqOs" value="Trình duyệt hiện đại"></label>
-            <label>CPU<input id="reqCpu" value="Bất kỳ"></label>
-          </div>
-          <div class="three">
-            <label>RAM<input id="reqRam" value="2 GB"></label>
-            <label>GPU<input id="reqGpu" value="WebGL"></label>
-            <label>Dung lượng<input id="reqStorage" value="Không cần cài đặt"></label>
-          </div>
+      <div class="portal-grid">
+        <section class="portal-card">
+          <div class="portal-toolbar"><div><h2 id="publisherFormTitle" style="margin:0">Gửi game mới</h2><small style="color:#8492ab">Game mới luôn vào trạng thái Pending</small></div><button id="cancelEditGame" class="mini-btn" type="button" hidden>Hủy sửa</button></div>
+          <form id="gameSubmissionForm" class="portal-form">
+            <input id="editPublisherGameId" type="hidden">
+            <div class="two"><label>Tên game<input id="gameName" required maxlength="160"></label><label>Nhà phát hành<input id="publisherName" required maxlength="160"></label></div>
+            <div class="three"><label>Loại game<select id="gameType"><option value="web">Web game</option><option value="download">Game tải về</option></select></label><label>Giá Lạc Coin<input id="priceCoins" type="number" min="0" value="0"></label><label>Ngày phát hành<input id="releaseDate" type="date"></label></div>
+            <label>Mô tả ngắn<input id="shortDescription" maxlength="500" required></label><label>Mô tả đầy đủ<textarea id="description" required></textarea></label>
+            <div class="two"><label>Tags<input id="tags" placeholder="Casual, Puzzle, Giáo dục"></label><label>Ảnh bìa URL<input id="coverUrl" type="url" placeholder="https://..."></label></div>
+            <div class="three"><label>Icon<input id="gameIcon" value="🎮" maxlength="32"></label><label>Badge<input id="badge" placeholder="Mới / Hot"></label><label>Theme<input id="theme" value="default"></label></div>
+            <label id="playUrlLabel">URL chạy Web Game<input id="playUrl" type="url" placeholder="https://.../index.html"></label>
+            <label id="downloadUrlLabel" hidden>URL tải game hoặc object R2<input id="downloadUrl" placeholder="https://.../game.zip hoặc r2:key"><span class="media-upload"><input id="downloadFile" type="file" accept=".zip,.7z,.rar,application/zip,application/octet-stream"><button id="uploadDownloadFile" class="mini-btn" type="button">Upload build trực tiếp R2</button></span></label>
 
-          <div class="portal-note">Trang này gửi metadata và URL game lên server. File game dung lượng lớn không được lưu trên GitHub Pages/Railway volume; khi dùng file upload thật sẽ nối object storage riêng (R2/S3) và URL tạo ra sẽ tự điền vào đây.</div>
-          <div id="publisherStatus" class="portal-status"></div>
-          <button class="btn btn-primary" type="submit">Gửi game để Admin duyệt</button>
-        </form>
-      </section>
+            <h3>Media game <small style="color:#8290aa">— tối thiểu 3 ảnh</small></h3>
+            <p class="media-help">Dùng nút + để thêm. Ảnh/video có thể dán URL hoặc chọn file. File không đi qua Railway: trình duyệt upload trực tiếp lên R2 bằng signed URL.</p>
+            <div id="mediaBuilder" class="media-builder"></div>
+            <button id="addMedia" class="mini-btn" type="button">+ Thêm ảnh / video</button>
 
-      <aside class="portal-card">
-        <div class="portal-toolbar"><div><h2 style="margin:0">Game đã gửi</h2><small style="color:#8492ab">Theo dõi trạng thái xét duyệt</small></div><button id="refreshSubmissions" class="mini-btn" type="button">Làm mới</button></div>
-        <div id="submissionList" class="submission-list"></div>
-      </aside>
+            <h3>Version</h3><div class="two"><label>Version<input id="versionName" value="1.0.0" placeholder="1.0.0"></label><label>Changelog<input id="changelog" value="Bản phát hành đầu tiên"></label></div>
+            <h3>Cấu hình đề nghị</h3><div class="two"><label>Hệ điều hành<input id="reqOs"></label><label>CPU<input id="reqCpu"></label></div><div class="three"><label>RAM<input id="reqRam"></label><label>GPU<input id="reqGpu"></label><label>Dung lượng<input id="reqStorage"></label></div>
+            <div id="publisherStatus" class="portal-status"></div><button id="submitGameButton" class="btn btn-primary" type="submit">Gửi game để Admin duyệt</button>
+          </form>
+        </section>
+
+        <aside class="portal-card"><div class="portal-toolbar"><div><h2 style="margin:0">Game đã gửi</h2><small style="color:#8492ab">Sửa, gửi lại hoặc tạo version mới</small></div><button id="refreshSubmissions" class="mini-btn" type="button">Làm mới</button></div><div id="submissionList" class="submission-list"></div></aside>
+      </div>
     </div>
   </main>
 
-  <script src="./config.js?v=20260808-0015-headerfix"></script>
-  <script src="./publisher.js?v=20260808-0115-publisher-submit"></script>
-  <script src="./protected-pages.js?v=20260808-0015-headerfix"></script>
-</body>
-</html>
+  <div id="versionModal" class="server-auth-modal" hidden><section class="server-auth-card" style="width:min(620px,100%)"><button class="server-auth-close" type="button" data-close-version>×</button><h2>Tạo bản cập nhật</h2><form id="versionForm" class="portal-form"><input id="versionGameId" type="hidden"><label>Version<input id="newVersionName" required placeholder="1.1.0"></label><label>Changelog<textarea id="newVersionChangelog" required></textarea></label><label>Play URL<input id="newVersionPlayUrl"></label><label>Download URL / r2:key<input id="newVersionDownloadUrl"></label><div id="versionStatus" class="portal-status"></div><button class="btn btn-primary" type="submit">Gửi version để duyệt</button></form></section></div>
+
+  <script src="./config.js?v=20260808-0135-publisher-v2"></script><script src="./publisher.js?v=20260808-0135-publisher-v2"></script><script src="./protected-pages.js?v=20260808-0135-publisher-v2"></script>
+</body></html>
