@@ -6,8 +6,8 @@ window.APP_CONFIG = {
  * Session authority
  * - Không polling server.
  * - Token v2 tự chứa thời hạn; trình duyệt kiểm tra thời hạn hoàn toàn local.
- * - Mỗi request API có Authorization nếu nhận 401 sẽ xoá session ngay.
- * - store-session.js vẫn chỉ xác minh /me một lần khi mở trang.
+ * - Request API có Authorization nếu nhận 401 sẽ xoá session ngay.
+ * - /api/store/me chỉ được dùng để xác minh khi mở trang; dữ liệu response được cache local.
  */
 (() => {
   const STORE_KEY = "lacvietgamesStoreSession";
@@ -62,7 +62,6 @@ window.APP_CONFIG = {
   function refreshLoggedOutUi() {
     document.body?.classList.remove("server-authenticated");
     window.dispatchEvent(new CustomEvent("lvg:session-invalid"));
-
     if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) {
       sessionStorage.setItem(RELOAD_KEY, "1");
       location.reload();
@@ -83,7 +82,6 @@ window.APP_CONFIG = {
     expiryTimer = null;
     const session = read();
     if (!session?.token) return;
-
     const expiresAt = tokenExpiresAt(session.token);
     if (!expiresAt) return;
     const remaining = expiresAt - Date.now();
@@ -91,12 +89,25 @@ window.APP_CONFIG = {
       invalidate("expired");
       return;
     }
-
-    // Browser giới hạn một timer dài khoảng 24.8 ngày; chia thành các timer local.
     expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining + 50, 2_000_000_000));
   }
 
-  // Token DataProtection cũ không còn hợp lệ sau khi backend chuyển sang v2.
+  function cacheServerAccount(data) {
+    if (!data || typeof data !== "object") return;
+    const located = locate();
+    if (!located?.session) return;
+    const session = located.session;
+    if (data.id != null) session.id = data.id;
+    if (data.name != null) session.name = data.name;
+    if (Object.prototype.hasOwnProperty.call(data, "displayName")) session.displayName = data.displayName || null;
+    if (data.effectiveDisplayName != null) session.effectiveDisplayName = data.effectiveDisplayName;
+    if (data.email != null) session.email = data.email;
+    if (data.role != null) session.role = data.role;
+    if (data.coinBalance != null) session.coinBalance = data.coinBalance;
+    located.storage.setItem(STORE_KEY, JSON.stringify(session));
+    window.dispatchEvent(new CustomEvent("lvg:session-hydrated", { detail: session }));
+  }
+
   const initial = read();
   if (initial?.token && !initial.token.includes(".")) {
     clear();
@@ -108,23 +119,29 @@ window.APP_CONFIG = {
   if (!read()) sessionStorage.removeItem(RELOAD_KEY);
   scheduleExpiry();
 
-  window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry };
+  window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount };
 
-  // Không tạo thêm request. Chỉ quan sát response của request API vốn đã được gọi.
+  // Không tạo request mới: chỉ xử lý response của request mà ứng dụng vốn đã gọi.
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async function(input, init) {
     const response = await nativeFetch(input, init);
     try {
       const url = typeof input === "string" ? input : input?.url || "";
       const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
-      if (response.status === 401 && url.startsWith(API_BASE) && headers.has("Authorization")) {
+      const authenticated = url.startsWith(API_BASE) && headers.has("Authorization");
+
+      if (response.status === 401 && authenticated) {
         queueMicrotask(() => invalidate("server-unauthorized"));
+      } else if (response.ok && authenticated && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) {
+        response.clone().json().then(payload => {
+          const data = payload?.data;
+          if (data && !Array.isArray(data)) cacheServerAccount(data);
+        }).catch(() => {});
       }
     } catch {}
     return response;
   };
 
-  // Logout ở tab khác được phản ánh ngay, không gọi server.
   window.addEventListener("storage", event => {
     if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) {
       clear();
@@ -132,13 +149,12 @@ window.APP_CONFIG = {
     }
   });
 
-  // Khi quay lại tab chỉ kiểm tra hạn token local, không gọi API.
+  // Chỉ kiểm tra thời hạn local khi quay lại tab; không gọi API.
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) scheduleExpiry();
   });
 
-  // Một lần duy nhất sau lúc các script khởi động: nếu store-session.js vừa
-  // phát hiện phiên không hợp lệ và xoá storage thì refresh UI cũ.
+  // Một lần sau boot: nếu lần xác minh /me ban đầu vừa xoá token lỗi thì render logout ngay.
   const hadSessionAtBoot = !!initial?.token;
   if (hadSessionAtBoot) {
     setTimeout(() => {
@@ -161,7 +177,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2133-session2";
+const version = "20260807-2133-session3";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
