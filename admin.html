@@ -3,57 +3,105 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#070b16">
+  <meta name="theme-color" content="#070b14">
+  <meta name="robots" content="noindex,nofollow">
   <title>Admin Center | LacVietGames</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./store.css">
-  <link rel="stylesheet" href="./portal.css">
-  <style>
-    .coin-package-list{display:grid;gap:12px}.coin-package-row{display:grid;grid-template-columns:minmax(180px,1.3fr) repeat(4,minmax(100px,.7fr)) auto;gap:14px;align-items:center;padding:16px;border:1px solid #283247;border-radius:16px;background:#101620}.coin-package-row.inactive{opacity:.62}.coin-package-row small{display:block;color:#7f8da7;margin-top:4px}.coin-package-value{font-weight:800}.coin-package-bonus{color:#75dda0}.coin-package-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.coin-package-state{display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border-radius:999px;font-size:12px;font-weight:800;background:#163326;color:#79e0a3}.coin-package-state.off{background:#352028;color:#ff9baa}@media(max-width:1050px){.coin-package-row{grid-template-columns:1fr 1fr 1fr}.coin-package-actions{justify-content:flex-start}}@media(max-width:650px){.coin-package-row{grid-template-columns:1fr}}
-  </style>
+  <link rel="stylesheet" href="./admin.css?v=20260808-0025-admincenter">
 </head>
-<body class="portal-page" data-page="admin">
-  <header class="site-header">
-    <div class="topbar">
-      <a class="logo" href="./index.html"><span class="logo-mark">LV</span><span>LacVietGames</span></a>
-      <nav class="main-nav"><a href="./index.html">Cửa hàng</a><a href="./publisher.html">Publisher</a><a class="active" href="./admin.html">Admin</a></nav>
-      <div class="header-actions"><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập</button></div>
+<body class="admin-page">
+  <section id="adminGate" class="admin-gate">
+    <div class="admin-login-card">
+      <div class="admin-brand"><span class="admin-brand-mark">LV</span><div><strong>LacVietGames</strong><small>Administration Console</small></div></div>
+      <h1>Đăng nhập quản trị</h1>
+      <p>Chỉ tài khoản có quyền Admin mới được truy cập dữ liệu quản trị, duyệt game, người dùng, giao dịch và cấu hình Lạc Coin.</p>
+      <form id="adminLoginForm" class="admin-form">
+        <label>Email Admin<input id="adminLoginEmail" type="email" autocomplete="username" required></label>
+        <label>Mật khẩu<input id="adminLoginPassword" type="password" autocomplete="current-password" required></label>
+        <button id="adminLoginButton" class="admin-primary" type="submit">Đăng nhập Admin</button>
+      </form>
+      <div id="adminGateStatus" class="admin-login-status" role="status"></div>
+      <div style="margin-top:18px"><a class="admin-ghost" style="display:inline-block;text-decoration:none" href="./index.html">← Quay lại cửa hàng</a></div>
     </div>
-  </header>
+  </section>
 
-  <main class="portal-shell">
-    <div class="portal-head"><div><span class="eyebrow">Administration</span><h1>LacVietGames Admin Center</h1><p>Duyệt game, quản lý người dùng và cấu hình gói Lạc Coin trực tiếp từ dữ liệu server.</p></div><a class="btn btn-secondary" href="./index.html">← Cửa hàng</a></div>
-
-    <section id="adminDenied" class="portal-card" hidden><h2>Không có quyền truy cập</h2><p id="adminDeniedText">Trang này chỉ dành cho Admin.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập tài khoản Admin</button></section>
-
-    <section id="adminContent" hidden>
-      <div class="admin-tabs">
-        <button class="active" data-admin-tab="pending">Game chờ duyệt</button>
-        <button data-admin-tab="all">Tất cả game</button>
-        <button data-admin-tab="users">Người dùng</button>
-        <button data-admin-tab="coin-packages">Gói Lạc Coin</button>
+  <div id="adminShell" class="admin-shell" hidden>
+    <aside class="admin-sidebar">
+      <div class="admin-brand"><span class="admin-brand-mark">LV</span><div><strong>Admin Center</strong><small>LacVietGames</small></div></div>
+      <nav class="admin-nav">
+        <button class="active" type="button" data-admin-section="dashboard"><span>Tổng quan</span></button>
+        <button type="button" data-admin-section="pending"><span>Game chờ duyệt</span><span id="navPendingCount" class="nav-count">0</span></button>
+        <button type="button" data-admin-section="games"><span>Tất cả game</span></button>
+        <button type="button" data-admin-section="users"><span>Người dùng</span></button>
+        <button type="button" data-admin-section="coin-packages"><span>Gói Lạc Coin</span></button>
+        <button type="button" data-admin-section="transactions"><span>Giao dịch</span></button>
+      </nav>
+      <div class="admin-side-bottom">
+        <a class="admin-secondary" style="text-align:center;text-decoration:none" href="./index.html">Mở cửa hàng</a>
+        <button id="adminLogout" class="admin-ghost" type="button">Đăng xuất Admin</button>
       </div>
-      <div id="adminStatus" class="portal-status"></div>
-      <section id="adminGamesPanel" class="portal-card"><div class="portal-toolbar"><div><h2 style="margin:0">Danh sách game</h2><small style="color:#8492ab">Duyệt, từ chối hoặc chỉnh sửa trước khi xuất bản</small></div><button id="refreshAdmin" class="mini-btn" type="button">Làm mới</button></div><div id="adminGameList" class="admin-list"></div></section>
-      <section id="adminUsersPanel" class="portal-card" hidden><div class="portal-toolbar"><div><h2 style="margin:0">Người dùng</h2><small style="color:#8492ab">Sửa tên, quyền và điều chỉnh coin có lịch sử</small></div><input id="userSearch" type="search" placeholder="Tìm email / tên"></div><div id="adminUserList" class="admin-list"></div></section>
-      <section id="adminCoinPackagesPanel" class="portal-card" hidden>
-        <div class="portal-toolbar">
-          <div><h2 style="margin:0">Gói Lạc Coin</h2><small style="color:#8492ab">Giá và số coin ở đây được dùng trực tiếp khi tạo thanh toán payOS.</small></div>
-          <div class="admin-actions" style="margin:0"><button id="refreshCoinPackages" class="mini-btn" type="button">Làm mới</button><button id="addCoinPackage" class="mini-btn primary" type="button">+ Thêm gói mới</button></div>
-        </div>
-        <div id="coinPackageList" class="coin-package-list"></div>
-      </section>
-    </section>
-  </main>
+    </aside>
 
-  <div id="adminEditModal" class="server-auth-modal" hidden>
-    <section class="server-auth-card" style="width:min(760px,100%);max-height:90vh;overflow:auto">
-      <button id="closeAdminEdit" class="server-auth-close" type="button">×</button>
-      <h2>Chỉnh sửa game</h2>
-      <form id="adminGameForm" class="portal-form">
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div><h1 id="adminPageTitle">Tổng quan hệ thống</h1></div>
+        <div class="admin-topbar-user"><div class="admin-avatar" id="adminAvatar">A</div><span id="adminIdentity">Admin</span></div>
+      </header>
+
+      <div class="admin-content">
+        <div id="adminStatus" class="admin-status"></div>
+
+        <section id="sectionDashboard" class="admin-section" data-section-panel="dashboard">
+          <div class="admin-section-head"><div><h2>Tổng quan hệ thống</h2><p>Dữ liệu thật lấy trực tiếp từ database LacVietGames.</p></div><button id="refreshDashboard" class="admin-secondary" type="button">Làm mới</button></div>
+          <div class="admin-stat-grid">
+            <article class="admin-stat"><small>Người dùng</small><strong id="statUsers">—</strong><em id="statVerifiedUsers">— đã xác minh</em></article>
+            <article class="admin-stat"><small>Game chờ duyệt</small><strong id="statPending">—</strong><em>Cần xử lý</em></article>
+            <article class="admin-stat"><small>Game đã xuất bản</small><strong id="statPublished">—</strong><em id="statTotalGames">— tổng game</em></article>
+            <article class="admin-stat"><small>Doanh thu nạp</small><strong id="statRevenue">—</strong><em id="statTopups">— giao dịch nạp</em></article>
+            <article class="admin-stat"><small>Coin trong ví user</small><strong id="statWalletCoins">—</strong><em>Tổng số dư hiện tại</em></article>
+            <article class="admin-stat"><small>Gói Coin đang bán</small><strong id="statPackages">—</strong><em>Cấu hình từ database</em></article>
+          </div>
+          <div class="admin-grid-2">
+            <article class="admin-card"><div class="admin-card-head"><div><h3>Game mới gửi</h3><small>Ưu tiên xử lý game Pending</small></div><button class="admin-ghost" type="button" data-jump="pending">Xem duyệt game</button></div><div id="dashboardSubmissions" class="admin-list"></div></article>
+            <article class="admin-card"><div class="admin-card-head"><div><h3>Giao dịch gần đây</h3><small>Nạp coin, mua game và điều chỉnh Admin</small></div><button class="admin-ghost" type="button" data-jump="transactions">Xem tất cả</button></div><div id="dashboardTransactions" class="admin-list"></div></article>
+          </div>
+        </section>
+
+        <section id="sectionPending" class="admin-section" data-section-panel="pending" hidden>
+          <div class="admin-section-head"><div><h2>Game chờ duyệt</h2><p>Kiểm tra đầy đủ metadata, giá, URL và thông tin nhà phát hành trước khi xuất bản.</p></div><button id="refreshPending" class="admin-secondary" type="button">Làm mới</button></div>
+          <div id="pendingGameList" class="admin-list"></div>
+        </section>
+
+        <section id="sectionGames" class="admin-section" data-section-panel="games" hidden>
+          <div class="admin-section-head"><div><h2>Tất cả game</h2><p>Quản lý game Pending, Published và Rejected.</p></div><button id="refreshGames" class="admin-secondary" type="button">Làm mới</button></div>
+          <div id="allGameList" class="admin-list"></div>
+        </section>
+
+        <section id="sectionUsers" class="admin-section" data-section-panel="users" hidden>
+          <div class="admin-section-head"><div><h2>Người dùng</h2><p>Quản lý tên tài khoản, quyền và số dư Lạc Coin.</p></div></div>
+          <div class="admin-toolbar"><input id="userSearch" class="admin-search" type="search" placeholder="Tìm tên hoặc email..."><button id="refreshUsers" class="admin-secondary" type="button">Làm mới</button></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>ID</th><th>Tài khoản</th><th>Email</th><th>Quyền</th><th>Lạc Coin</th><th>Xác minh</th><th>Thao tác</th></tr></thead><tbody id="adminUserTable"></tbody></table></div>
+        </section>
+
+        <section id="sectionCoinPackages" class="admin-section" data-section-panel="coin-packages" hidden>
+          <div class="admin-section-head"><div><h2>Gói Lạc Coin</h2><p>Giá ở đây được backend dùng trực tiếp khi tạo đơn payOS.</p></div><div class="admin-actions"><button id="refreshCoinPackages" class="admin-secondary" type="button">Làm mới</button><button id="addCoinPackage" class="admin-primary" type="button">+ Thêm gói mới</button></div></div>
+          <div id="coinPackageGrid" class="coin-package-grid"></div>
+        </section>
+
+        <section id="sectionTransactions" class="admin-section" data-section-panel="transactions" hidden>
+          <div class="admin-section-head"><div><h2>Giao dịch hệ thống</h2><p>Lịch sử nạp coin, mua game, thưởng và điều chỉnh số dư.</p></div><button id="refreshTransactions" class="admin-secondary" type="button">Làm mới</button></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Thời gian</th><th>Người dùng</th><th>Loại</th><th>Coin</th><th>VNĐ</th><th>Trạng thái</th><th>Tham chiếu</th></tr></thead><tbody id="transactionTable"></tbody></table></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="gameEditModal" class="admin-modal" hidden>
+    <div class="admin-modal-card"><button class="admin-modal-close" type="button" data-close-modal="game">×</button><h2>Chỉnh sửa game</h2>
+      <form id="gameEditForm" class="admin-form">
         <input id="editGameId" type="hidden">
         <div class="two"><label>Tên game<input id="editName" required></label><label>Slug<input id="editSlug" required></label></div>
         <div class="three"><label>Loại<select id="editType"><option value="web">Web</option><option value="download">Download</option></select></label><label>Giá coin<input id="editPrice" type="number" min="0"></label><label>Trạng thái<select id="editStatus"><option>Pending</option><option>Published</option><option>Rejected</option></select></label></div>
@@ -65,29 +113,26 @@
         <div class="three"><label>OS<input id="editOs"></label><label>CPU<input id="editCpu"></label><label>RAM<input id="editRam"></label></div>
         <div class="two"><label>GPU<input id="editGpu"></label><label>Dung lượng<input id="editStorage"></label></div>
         <label>Lý do từ chối<textarea id="editRejectReason"></textarea></label>
-        <button class="btn btn-primary" type="submit">Lưu thay đổi</button>
+        <button class="admin-primary" type="submit">Lưu thay đổi</button>
       </form>
-    </section>
+    </div>
   </div>
 
-  <div id="coinPackageModal" class="server-auth-modal" hidden>
-    <section class="server-auth-card" style="width:min(620px,100%);max-height:90vh;overflow:auto">
-      <button id="closeCoinPackageModal" class="server-auth-close" type="button">×</button>
-      <h2 id="coinPackageModalTitle">Thêm gói Lạc Coin</h2>
-      <form id="coinPackageForm" class="portal-form">
+  <div id="coinPackageModal" class="admin-modal" hidden>
+    <div class="admin-modal-card" style="width:min(620px,100%)"><button class="admin-modal-close" type="button" data-close-modal="coin">×</button><h2 id="coinPackageModalTitle">Thêm gói Lạc Coin</h2>
+      <form id="coinPackageForm" class="admin-form">
         <input id="coinPackageId" type="hidden">
-        <label>Tên gói<input id="coinPackageName" maxlength="120" placeholder="Ví dụ: Gói khởi đầu" required></label>
+        <label>Tên gói<input id="coinPackageName" maxlength="120" required></label>
         <div class="two"><label>Số Lạc Coin<input id="coinPackageAmount" type="number" min="1" step="1" required></label><label>Giá bán (VNĐ)<input id="coinPackagePrice" type="number" min="1" step="1" required></label></div>
         <div class="two"><label>Coin thưởng<input id="coinPackageBonus" type="number" min="0" step="1" value="0"></label><label>Thứ tự hiển thị<input id="coinPackageSort" type="number" min="0" step="1" value="0"></label></div>
-        <label class="auth-check" style="display:flex;gap:10px;align-items:center"><input id="coinPackageActive" type="checkbox" checked style="width:auto"><span>Đang mở bán</span></label>
-        <div class="portal-note">Khi người dùng tạo đơn, backend sẽ chụp lại giá và tổng coin của gói tại thời điểm đó. Sửa giá sau này không làm thay đổi các đơn đã tạo.</div>
-        <button class="btn btn-primary" type="submit">Lưu gói Lạc Coin</button>
+        <label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="coinPackageActive" type="checkbox" checked style="width:auto"><span>Đang mở bán</span></label>
+        <div class="admin-note">Backend chụp giá và tổng coin vào PaymentOrder khi tạo thanh toán. Đổi giá sau này không làm thay đổi đơn cũ.</div>
+        <button class="admin-primary" type="submit">Lưu gói Lạc Coin</button>
       </form>
-    </section>
+    </div>
   </div>
 
-  <script src="./config.js?v=20260808-0010-authrefresh"></script>
-  <script src="./admin.js?v=20260808-0010-authrefresh"></script>
-  <script src="./protected-pages.js?v=20260808-0010-authrefresh"></script>
+  <script>window.APP_CONFIG={API_BASE_URL:"https://lacvietgames-api-production.up.railway.app"};</script>
+  <script src="./admin.js?v=20260808-0025-admincenter"></script>
 </body>
 </html>
