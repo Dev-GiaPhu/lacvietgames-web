@@ -15,7 +15,19 @@ window.APP_CONFIG = {
   function locate() { for (const storage of [localStorage, sessionStorage]) { try { const raw = storage.getItem(STORE_KEY); if (raw) return { storage, session: JSON.parse(raw) }; } catch {} } return null; }
   function read() { return locate()?.session || null; }
   function clear() { for (const storage of [localStorage, sessionStorage]) { try { storage.removeItem(STORE_KEY); storage.removeItem(LEGACY_KEY); } catch {} } if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null; }
-  function tokenExpiresAt(token) { if (!token || typeof token !== "string" || !token.includes(".")) return null; try { const encoded = token.split(".", 1)[0].replace(/-/g, "+").replace(/_/g, "/"); const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4); const payload = atob(padded); const parts = payload.split("|"); if (parts.length !== 2) return null; const ticks = BigInt(parts[1]); const unixEpochTicks = 621355968000000000n; const milliseconds = Number((ticks - unixEpochTicks) / 10000n); return Number.isFinite(milliseconds) ? milliseconds : null; } catch { return null; } }
+  function tokenExpiresAt(token) {
+    if (!token || typeof token !== "string" || !token.includes(".")) return null;
+    try {
+      const encoded = token.split(".", 1)[0].replace(/-/g, "+").replace(/_/g, "/");
+      const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4);
+      const parts = atob(padded).split("|");
+      if (parts.length < 2 || parts.length > 3) return null;
+      const ticks = BigInt(parts[1]);
+      const unixEpochTicks = 621355968000000000n;
+      const milliseconds = Number((ticks - unixEpochTicks) / 10000n);
+      return Number.isFinite(milliseconds) ? milliseconds : null;
+    } catch { return null; }
+  }
   function refreshLoggedOutUi() { document.body?.classList.remove("server-authenticated"); window.dispatchEvent(new CustomEvent("lvg:session-invalid")); if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) { sessionStorage.setItem(RELOAD_KEY, "1"); location.reload(); } }
   function invalidate(reason = "invalid") { if (invalidating) return; invalidating = true; const hadSession = !!read(); clear(); if (hadSession) refreshLoggedOutUi(); setTimeout(() => { invalidating = false; }, 0); }
   function scheduleExpiry() { if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null; const session = read(); if (!session?.token) return; const expiresAt = tokenExpiresAt(session.token); if (!expiresAt) return; const remaining = expiresAt - Date.now(); if (remaining <= 0) { invalidate("expired"); return; } expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining + 50, 2_000_000_000)); }
@@ -24,7 +36,8 @@ window.APP_CONFIG = {
 
   const initial = read();
   if (initial?.token && !initial.token.includes(".")) clear(); else if (initial?.token) { const expiresAt = tokenExpiresAt(initial.token); if (expiresAt && expiresAt <= Date.now()) clear(); }
-  if (!read()) sessionStorage.removeItem(RELOAD_KEY); scheduleExpiry();
+  if (!read()) sessionStorage.removeItem(RELOAD_KEY);
+  scheduleExpiry();
   window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount };
 
   const nativeFetch = window.fetch.bind(window);
@@ -40,7 +53,7 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260808-0200-store-v3";
+const version = "20260808-0230-store-v4";
 function loadScript(path) { const script=document.createElement("script"); script.src=`${path}?v=${version}`; script.async=false; document.head.appendChild(script); }
 loadScript("./modal-safety.js");
 loadScript("./registration-flow.js");
@@ -51,5 +64,7 @@ loadScript("./login-campaigns.js");
 loadScript("./account-enhancements.js");
 loadScript("./display-name-global.js");
 loadScript("./store-experience.js");
+loadScript("./library-download.js");
+loadScript("./profile-security.js");
 loadScript("./footer-links.js");
 loadScript("./protected-pages.js");
