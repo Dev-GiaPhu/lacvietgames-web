@@ -6,6 +6,37 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `
   .header-actions > .coin-pill { display: none !important; }
   body.server-authenticated .header-actions > .coin-pill { display: flex !important; }
+
+  /* Auth modal: chỉ hiển thị đúng một bước/form tại một thời điểm. */
+  .server-auth-form[hidden],
+  #serverAuthMain[hidden],
+  #serverVerifyForm[hidden] {
+    display: none !important;
+  }
+
+  /* Không để form đăng ký dài tràn khỏi màn hình. */
+  .server-auth-modal {
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .server-auth-card {
+    max-height: calc(100dvh - 40px) !important;
+    overflow-y: auto !important;
+    scrollbar-gutter: stable;
+  }
+
+  @media (max-height: 760px) {
+    .server-auth-modal {
+      place-items: start center !important;
+      padding-top: 12px !important;
+      padding-bottom: 12px !important;
+    }
+
+    .server-auth-card {
+      max-height: calc(100dvh - 24px) !important;
+    }
+  }
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
