@@ -5,57 +5,34 @@
   const app = document.getElementById("app");
   if (!app) return;
 
-  const esc = (value = "") => String(value).replace(/[&<>'"]/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
-  }[c]));
+  const esc = (value = "") => String(value).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
   const fmt = value => Number(value || 0).toLocaleString("vi-VN");
   const money = value => `${Number(value || 0).toLocaleString("vi-VN")}đ`;
 
   function readSession() {
     if (window.LVGSession?.read) return window.LVGSession.read();
     for (const storage of [localStorage, sessionStorage]) {
-      try {
-        const raw = storage.getItem("lacvietgamesStoreSession");
-        if (raw) return JSON.parse(raw);
-      } catch {}
+      try { const raw = storage.getItem("lacvietgamesStoreSession"); if (raw) return JSON.parse(raw); } catch {}
     }
     return null;
   }
 
   async function api(path, { method = "GET", body, auth = true } = {}) {
     const session = readSession();
-    if (auth && !session?.token) {
-      const error = new Error("Bạn cần đăng nhập để sử dụng Ví Lạc Coin.");
-      error.status = 401;
-      throw error;
-    }
-
+    if (auth && !session?.token) { const error = new Error("Bạn cần đăng nhập để sử dụng Ví Lạc Coin."); error.status = 401; throw error; }
     const headers = { "Content-Type": "application/json" };
     if (auth && session?.token) headers.Authorization = `Bearer ${session.token}`;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const response = await fetch(`${apiBase}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal
-      });
+      const response = await fetch(`${apiBase}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: controller.signal });
       const payload = await response.json().catch(() => null);
-      if (!response.ok || payload?.success === false) {
-        const error = new Error(payload?.message || "Không thể xử lý yêu cầu.");
-        error.status = response.status;
-        error.code = payload?.code;
-        throw error;
-      }
+      if (!response.ok || payload?.success === false) { const error = new Error(payload?.message || "Không thể xử lý yêu cầu."); error.status = response.status; error.code = payload?.code; throw error; }
       return payload;
     } catch (error) {
       if (error?.name === "AbortError") throw new Error("Kết nối đang chậm. Vui lòng thử lại.");
       throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
+    } finally { clearTimeout(timeout); }
   }
 
   function ensureStyle() {
@@ -75,13 +52,8 @@
     document.head.appendChild(style);
   }
 
-  function renderSkeleton() {
-    app.innerHTML = `<div class="wallet-skeleton" aria-label="Đang mở Ví Lạc Coin"><div class="sk sk-title"></div><div class="sk sk-balance"></div><div class="sk sk-packs"></div><div class="sk sk-history"></div></div>`;
-  }
-
-  function renderLoggedOut() {
-    app.innerHTML = `<div class="empty-state"><h2>Đăng nhập để mở Ví Lạc Coin</h2><p>Số dư và giao dịch được bảo vệ theo tài khoản của bạn.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập / Đăng ký</button></div>`;
-  }
+  function renderSkeleton() { app.innerHTML = `<div class="wallet-skeleton" aria-label="Đang mở Ví Lạc Coin"><div class="sk sk-title"></div><div class="sk sk-balance"></div><div class="sk sk-packs"></div><div class="sk sk-history"></div></div>`; }
+  function renderLoggedOut() { app.innerHTML = `<div class="empty-state"><h2>Đăng nhập để mở Ví Lạc Coin</h2><p>Số dư và giao dịch được bảo vệ theo tài khoản của bạn.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập / Đăng ký</button></div>`; }
 
   function transactionRow(t) {
     const amount = Number(t.coinAmount || 0);
@@ -94,32 +66,19 @@
   function renderWallet(wallet, packs) {
     const transactions = Array.isArray(wallet.data) ? wallet.data : [];
     const packageList = Array.isArray(packs.data) ? packs.data : [];
-    app.innerHTML = `
-      <div class="wallet-live">
-        <div class="wallet-live-head"><div><span class="eyebrow">LACVIET WALLET</span><h1>Ví Lạc Coin</h1></div></div>
-        <section class="wallet-balance-card"><span>Số dư khả dụng</span><strong>${fmt(wallet.balance)} LC</strong></section>
-        <section class="wallet-live-section"><h2>Nạp Lạc Coin</h2><p>Chọn gói Lạc Coin và thanh toán qua payOS.</p><div class="wallet-live-packs">${packageList.length ? packageList.map(p => `<button class="wallet-live-pack" type="button" data-wallet-package-id="${Number(p.id)}"><span class="wallet-coin-icon">🪙</span><span class="pack-name">${esc(p.name || "Gói Lạc Coin")}</span><strong>${fmt(p.totalCoin ?? (Number(p.coinAmount || 0) + Number(p.bonusCoin || 0)))} LC</strong><small>${money(p.amountVnd)}</small>${Number(p.bonusCoin || 0) > 0 ? `<span class="bonus">+${fmt(p.bonusCoin)} LC thưởng</span>` : ""}</button>`).join("") : '<div class="wallet-live-empty">Hiện chưa có gói Lạc Coin đang mở bán.</div>'}</div></section>
-        <section class="wallet-live-section"><h2>Lịch sử giao dịch</h2><div class="wallet-live-transactions">${transactions.length ? transactions.map(transactionRow).join("") : '<div class="wallet-live-empty">Chưa có giao dịch.</div>'}</div></section>
-      </div>`;
+    app.innerHTML = `<div class="wallet-live"><div class="wallet-live-head"><div><span class="eyebrow">LACVIET WALLET</span><h1>Ví Lạc Coin</h1></div></div><section class="wallet-balance-card"><span>Số dư khả dụng</span><strong>${fmt(wallet.balance)} LC</strong></section><section class="wallet-live-section"><h2>Nạp Lạc Coin</h2><p>Chọn gói Lạc Coin và thanh toán qua payOS.</p><div class="wallet-live-packs">${packageList.length ? packageList.map(p => `<button class="wallet-live-pack" type="button" data-wallet-package-id="${Number(p.id)}"><span class="wallet-coin-icon">🪙</span><span class="pack-name">${esc(p.name || "Gói Lạc Coin")}</span><strong>${fmt(p.totalCoin ?? (Number(p.coinAmount || 0) + Number(p.bonusCoin || 0)))} LC</strong><small>${money(p.amountVnd)}</small>${Number(p.bonusCoin || 0) > 0 ? `<span class="bonus">+${fmt(p.bonusCoin)} LC thưởng</span>` : ""}</button>`).join("") : '<div class="wallet-live-empty">Hiện chưa có gói Lạc Coin đang mở bán.</div>'}</div></section><section class="wallet-live-section"><h2>Lịch sử giao dịch</h2><div class="wallet-live-transactions">${transactions.length ? transactions.map(transactionRow).join("") : '<div class="wallet-live-empty">Chưa có giao dịch.</div>'}</div></section></div>`;
   }
 
-  function renderError(message) {
-    app.innerHTML = `<div class="wallet-live-error"><strong>Không thể tải Ví Lạc Coin</strong><div style="margin-top:7px">${esc(message)}</div><button class="btn btn-secondary" type="button" data-wallet-retry>Thử lại</button></div>`;
-  }
+  function renderError(message) { app.innerHTML = `<div class="wallet-live-error"><strong>Không thể tải Ví Lạc Coin</strong><div style="margin-top:7px">${esc(message)}</div><button class="btn btn-secondary" type="button" data-wallet-retry>Thử lại</button></div>`; }
 
   async function loadWallet() {
     const session = readSession();
     if (!session?.token) return renderLoggedOut();
     renderSkeleton();
     try {
-      const [wallet, packs] = await Promise.all([
-        api("/api/store/wallet/transactions"),
-        api("/api/store/payments/packs", { auth: false })
-      ]);
+      const [wallet, packs] = await Promise.all([api("/api/store/wallet/transactions"), api("/api/store/payments/packs", { auth: false })]);
       renderWallet(wallet, packs);
-      if (window.LVGSession?.cacheServerAccount) {
-        window.LVGSession.cacheServerAccount({ coinBalance: Number(wallet.balance || 0) });
-      }
+      window.LVGSession?.cacheServerAccount?.({ coinBalance: Number(wallet.balance || 0) });
     } catch (error) {
       if (error.status === 401) return renderLoggedOut();
       renderError(error.message || "Không thể kết nối máy chủ.");
@@ -131,12 +90,11 @@
     button.disabled = true;
     button.innerHTML = `<strong>Đang tạo thanh toán…</strong>`;
     try {
-      const result = await api("/api/store/payments/orders", {
-        method: "POST",
-        body: { packageId, provider: "payos" }
-      });
+      const result = await api("/api/store/payments/orders", { method: "POST", body: { packageId, provider: "payos" } });
       const checkoutUrl = result.data?.checkoutUrl;
-      if (!checkoutUrl) throw new Error("Không nhận được đường dẫn thanh toán từ payOS.");
+      const orderId = result.data?.orderId;
+      if (!checkoutUrl || !orderId) throw new Error("Không nhận được thông tin thanh toán từ payOS.");
+      sessionStorage.setItem("lacvietgamesPendingPayment", JSON.stringify({ orderId: String(orderId), packageId, createdAt: Date.now() }));
       location.href = checkoutUrl;
     } catch (error) {
       button.disabled = false;
@@ -148,19 +106,11 @@
 
   ensureStyle();
   loadWallet();
-
   document.addEventListener("click", event => {
     const pack = event.target.closest("[data-wallet-package-id]");
-    if (pack) {
-      const packageId = Number(pack.dataset.walletPackageId);
-      if (Number.isInteger(packageId) && packageId > 0) createPayment(pack, packageId);
-      return;
-    }
+    if (pack) { const packageId = Number(pack.dataset.walletPackageId); if (Number.isInteger(packageId) && packageId > 0) createPayment(pack, packageId); return; }
     if (event.target.closest("[data-wallet-retry]")) loadWallet();
   });
-
-  window.addEventListener("lvg:session-hydrated", () => {
-    if (!app.querySelector(".wallet-live") && readSession()?.token) loadWallet();
-  });
+  window.addEventListener("lvg:session-hydrated", () => { if (!app.querySelector(".wallet-live") && readSession()?.token) loadWallet(); });
   window.addEventListener("lvg:session-invalid", renderLoggedOut);
 })();
