@@ -41,21 +41,21 @@ serverWalletGuardStyle.textContent = `
 document.head.appendChild(serverWalletGuardStyle);
 
 const registrationFlowScript = document.createElement("script");
-registrationFlowScript.src = "./registration-flow.js";
+registrationFlowScript.src = "./registration-flow.js?v=20260807-1850";
 registrationFlowScript.defer = true;
 document.head.appendChild(registrationFlowScript);
 
 const storeSessionScript = document.createElement("script");
-storeSessionScript.src = "./store-session.js";
+storeSessionScript.src = "./store-session.js?v=20260807-1850";
 storeSessionScript.defer = true;
 document.head.appendChild(storeSessionScript);
 
 const footerLinksScript = document.createElement("script");
-footerLinksScript.src = "./footer-links.js";
+footerLinksScript.src = "./footer-links.js?v=20260807-1850";
 footerLinksScript.defer = true;
 document.head.appendChild(footerLinksScript);
 
 const protectedPagesScript = document.createElement("script");
-protectedPagesScript.src = "./protected-pages.js";
+protectedPagesScript.src = "./protected-pages.js?v=20260807-1850";
 protectedPagesScript.defer = true;
 document.head.appendChild(protectedPagesScript);
