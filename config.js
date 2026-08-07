@@ -2,13 +2,6 @@ window.APP_CONFIG = {
   API_BASE_URL: "https://lacvietgames-api-production.up.railway.app"
 };
 
-/*
- * Session authority
- * - Không polling server.
- * - Token v2 tự chứa thời hạn; trình duyệt kiểm tra thời hạn hoàn toàn local.
- * - Request API có Authorization nếu nhận 401 sẽ xoá session ngay.
- * - Các request /api/store/me phát sinh đồng thời lúc boot được gộp thành 1 request mạng.
- */
 (() => {
   const STORE_KEY = "lacvietgamesStoreSession";
   const LEGACY_KEY = "lacvietgamesSession";
@@ -113,6 +106,28 @@ window.APP_CONFIG = {
     window.dispatchEvent(new CustomEvent("lvg:session-hydrated", { detail: session }));
   }
 
+  function cachedMeResponse() {
+    const s = read();
+    if (!s?.token) return null;
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        id: s.id,
+        name: s.name,
+        displayName: s.displayName || null,
+        effectiveDisplayName: s.effectiveDisplayName || s.displayName || s.name,
+        email: s.email,
+        role: s.role || "User",
+        coinBalance: Number(s.coinBalance || 0),
+        unreadNotifications: Number(s.unreadNotifications || 0),
+        library: Array.isArray(s.library) ? s.library : []
+      }
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", "X-LVG-Cache": "1" }
+    });
+  }
+
   const initial = read();
   if (initial?.token && !initial.token.includes(".")) {
     clear();
@@ -132,13 +147,34 @@ window.APP_CONFIG = {
     try {
       if (response.status === 401 && authenticated) {
         queueMicrotask(() => invalidate("server-unauthorized"));
-      } else if (response.ok && authenticated && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) {
+      } else if (response.ok && authenticated && !response.headers.get("X-LVG-Cache") && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) {
         response.clone().json().then(payload => {
           const data = payload?.data;
           if (data && !Array.isArray(data)) cacheServerAccount(data);
         }).catch(() => {});
       }
     } catch {}
+  }
+
+  async function fetchMeWithTimeout(input, init, url, authenticated) {
+    const existingSignal = init?.signal || (typeof Request !== "undefined" && input instanceof Request ? input.signal : null);
+    const controller = existingSignal ? null : new AbortController();
+    const requestInit = controller ? { ...(init || {}), signal: controller.signal } : init;
+    const timeout = controller ? setTimeout(() => controller.abort(), 8000) : null;
+
+    try {
+      const response = await nativeFetch(input, requestInit);
+      inspectResponse(response, url, authenticated);
+      return response.clone();
+    } catch (error) {
+      // Railway đang ngủ/cold-start hoặc mạng tạm chậm: dùng trạng thái server đã cache,
+      // không xóa phiên và không làm UI treo. 401 thật vẫn được xử lý phía trên.
+      const cached = cachedMeResponse();
+      if (cached) return cached;
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   window.fetch = async function(input, init) {
@@ -155,11 +191,7 @@ window.APP_CONFIG = {
 
     if (isMeRequest) {
       if (!inflightMe) {
-        inflightMe = nativeFetch(input, init).then(response => {
-          inspectResponse(response, url, authenticated);
-          // Giữ một template response chưa bị consumer đọc body; mọi caller nhận clone riêng.
-          return response.clone();
-        });
+        inflightMe = fetchMeWithTimeout(input, init, url, authenticated);
         inflightMe.finally(() => {
           clearTimeout(inflightMeClearTimer);
           inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 1200);
@@ -207,7 +239,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2255-stable";
+const version = "20260807-2310-stable";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
