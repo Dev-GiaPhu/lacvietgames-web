@@ -1,168 +1,35 @@
 (() => {
-  const apiBase = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
-  const byId = id => document.getElementById(id);
-  const readSession = () => {
-    if (window.LVGSession?.read) return window.LVGSession.read();
-    for (const storage of [localStorage, sessionStorage]) {
-      try {
-        const raw = storage.getItem("lacvietgamesStoreSession");
-        if (raw) return JSON.parse(raw);
-      } catch {}
-    }
-    return null;
-  };
-  const escapeHtml = (v = "") => String(v).replace(/[&<>'"]/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
-  }[c]));
+  const apiBase=(window.APP_CONFIG?.API_BASE_URL||"").replace(/\/$/,"");
+  const byId=id=>document.getElementById(id);const esc=(v="")=>String(v).replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));const fmt=n=>Number(n||0).toLocaleString("vi-VN");
+  let submissions=[];let media=[];
+  const readSession=()=>{if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[localStorage,sessionStorage]){try{const raw=s.getItem("lacvietgamesStoreSession");if(raw)return JSON.parse(raw)}catch{}}return null};
+  async function api(path,options={}){const s=readSession();if(!s?.token)throw Object.assign(new Error("Bạn cần đăng nhập."),{status:401});const res=await fetch(`${apiBase}${path}`,{method:options.method||"GET",headers:{"Content-Type":"application/json",Authorization:`Bearer ${s.token}`},body:options.body?JSON.stringify(options.body):undefined});const p=await res.json().catch(()=>null);if(!res.ok||p?.success===false)throw Object.assign(new Error(p?.message||"Không thể xử lý yêu cầu."),{status:res.status,code:p?.code});return p}
+  function status(message="",error=false){const el=byId("publisherStatus");if(!el)return;el.textContent=message;el.classList.toggle("error",error)}
+  function syncType(){const web=byId("gameType").value==="web";byId("playUrlLabel").hidden=!web;byId("downloadUrlLabel").hidden=web;if(!byId("reqOs").value)byId("reqOs").value=web?"Trình duyệt hiện đại":"Windows 10";if(!byId("reqCpu").value)byId("reqCpu").value=web?"Bất kỳ":"Intel i5 hoặc tương đương";if(!byId("reqRam").value)byId("reqRam").value=web?"2 GB":"8 GB";if(!byId("reqGpu").value)byId("reqGpu").value=web?"WebGL":"GTX 1050 hoặc tương đương";if(!byId("reqStorage").value)byId("reqStorage").value=web?"Không cần cài đặt":"2 GB"}
 
-  async function api(path, options = {}) {
-    const session = readSession();
-    if (!session?.token) throw Object.assign(new Error("Bạn cần đăng nhập."), { code: "AUTH_REQUIRED" });
+  function addMedia(item={type:"image",url:"",thumbnailUrl:"",sortOrder:media.length}){media.push({...item,sortOrder:item.sortOrder??media.length});renderMedia()}
+  function renderMedia(){const root=byId("mediaBuilder");root.innerHTML=media.map((m,i)=>`<div class="media-item" data-media-index="${i}"><select data-media-type><option value="image" ${m.type==="image"?"selected":""}>Ảnh</option><option value="video" ${m.type==="video"?"selected":""}>Video</option></select><div><input data-media-url type="url" value="${esc(m.url||"")}" placeholder="https://..."><div class="media-upload"><input data-media-file type="file" accept="image/*,video/*"><button class="mini-btn" type="button" data-upload-media="${i}">Upload trực tiếp R2</button></div><div class="media-preview">${previewHtml(m)}</div></div><button class="mini-btn" type="button" data-remove-media="${i}">Xóa</button></div>`).join("")||'<div class="portal-empty">Chưa có media. Thêm ít nhất 3 ảnh.</div>'}
+  function previewHtml(m){if(!m.url)return"Chưa có URL";if(m.type==="video")return`<video src="${esc(m.url)}" muted controls></video><span>Video</span>`;return`<img src="${esc(m.url)}" alt="preview"><span>Ảnh</span>`}
+  function syncMediaFromDom(){document.querySelectorAll("[data-media-index]").forEach(row=>{const i=Number(row.dataset.mediaIndex);if(!media[i])return;media[i].type=row.querySelector("[data-media-type]").value;media[i].url=row.querySelector("[data-media-url]").value.trim();media[i].sortOrder=i})}
+  async function uploadFileDirect(file,area){if(!file)throw new Error("Hãy chọn file trước.");const ticket=await api("/api/store/uploads/presign",{method:"POST",body:{fileName:file.name,contentType:file.type||"application/octet-stream",area}});const d=ticket.data||{};const res=await fetch(d.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});if(!res.ok)throw new Error(`R2 từ chối upload (${res.status}). Kiểm tra CORS bucket.`);return d}
+  async function uploadMedia(index){const row=document.querySelector(`[data-media-index="${index}"]`);const file=row?.querySelector("[data-media-file]")?.files?.[0];if(!file)return status("Hãy chọn file ảnh/video trước.",true);const btn=row.querySelector("[data-upload-media]");const old=btn.textContent;btn.disabled=true;btn.textContent="Đang upload...";try{const ticket=await uploadFileDirect(file,"game-media");if(!ticket.publicUrl)throw new Error("R2 đã nhận file nhưng chưa cấu hình PublicBaseUrl cho media.");media[index].type=file.type.startsWith("video/")?"video":"image";media[index].url=ticket.publicUrl;renderMedia();status("Upload media thành công. File đi trực tiếp từ trình duyệt lên R2.")}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
+  async function uploadBuild(){const file=byId("downloadFile").files?.[0];const btn=byId("uploadDownloadFile");if(!file)return status("Hãy chọn file build trước.",true);const old=btn.textContent;btn.disabled=true;btn.textContent="Đang upload build...";try{const ticket=await uploadFileDirect(file,"game-builds");byId("downloadUrl").value=`r2:${ticket.objectKey}`;status("Build đã upload trực tiếp R2. Backend chỉ lưu object key.")}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
 
-    const response = await fetch(`${apiBase}${path}`, {
-      method: options.method || "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.token}`
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
+  function collectPayload(){syncMediaFromDom();const images=media.filter(m=>m.type==="image"&&/^https?:\/\//i.test(m.url));if(images.length<3)throw new Error("Mỗi game cần ít nhất 3 ảnh. Hãy thêm ảnh bằng URL hoặc upload R2.");const type=byId("gameType").value;return{name:byId("gameName").value.trim(),publisherName:byId("publisherName").value.trim(),type,priceCoins:Number(byId("priceCoins").value||0),shortDescription:byId("shortDescription").value.trim(),description:byId("description").value.trim(),coverUrl:byId("coverUrl").value.trim(),icon:byId("gameIcon").value.trim()||"🎮",badge:byId("badge").value.trim(),theme:byId("theme").value.trim()||"default",playUrl:type==="web"?byId("playUrl").value.trim():"",downloadUrl:type==="download"?byId("downloadUrl").value.trim():"",releaseDate:byId("releaseDate").value||null,tags:byId("tags").value.split(",").map(v=>v.trim()).filter(Boolean),media:media.map((m,i)=>({type:m.type,url:m.url,thumbnailUrl:m.thumbnailUrl||null,sortOrder:i})),versionName:byId("versionName").value.trim()||"1.0.0",changelog:byId("changelog").value.trim()||"Cập nhật game",recommendedOs:byId("reqOs").value.trim(),recommendedCpu:byId("reqCpu").value.trim(),recommendedRam:byId("reqRam").value.trim(),recommendedGpu:byId("reqGpu").value.trim(),recommendedStorage:byId("reqStorage").value.trim()}}
+  function resetForm(){const form=byId("gameSubmissionForm");form.reset();byId("editPublisherGameId").value="";byId("publisherFormTitle").textContent="Gửi game mới";byId("cancelEditGame").hidden=true;byId("submitGameButton").textContent="Gửi game để Admin duyệt";byId("publisherName").value=readSession()?.effectiveDisplayName||readSession()?.displayName||readSession()?.name||"";byId("gameType").value="web";byId("gameIcon").value="🎮";byId("theme").value="default";byId("versionName").value="1.0.0";byId("changelog").value="Bản phát hành đầu tiên";byId("reqOs").value="";byId("reqCpu").value="";byId("reqRam").value="";byId("reqGpu").value="";byId("reqStorage").value="";media=[];addMedia();addMedia();addMedia();syncType();status("")}
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || payload?.success === false) {
-      throw Object.assign(new Error(payload?.message || "Không thể xử lý yêu cầu."), {
-        code: payload?.code,
-        status: response.status
-      });
-    }
-    return payload;
-  }
+  async function submitGame(event){event.preventDefault();const form=event.currentTarget;const btn=byId("submitGameButton");const old=btn.textContent;btn.disabled=true;btn.textContent="Đang gửi...";try{const payload=collectPayload();const id=Number(byId("editPublisherGameId").value||0);const result=await api(id?`/api/store/publisher/games/${id}`:"/api/store/publisher/games",{method:id?"PUT":"POST",body:payload});status(result.message||"Đã lưu game.");resetForm();await Promise.all([loadSubmissions(),loadAnalytics()])}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
+  function editGame(id){const item=submissions.find(x=>Number(x.game?.id)===Number(id));if(!item)return;const g=item.game;byId("editPublisherGameId").value=g.id;byId("publisherFormTitle").textContent=`Sửa: ${g.name}`;byId("cancelEditGame").hidden=false;byId("submitGameButton").textContent="Lưu & gửi lại để duyệt";byId("gameName").value=g.name||"";byId("publisherName").value=g.publisherName||"";byId("gameType").value=g.type||"web";byId("priceCoins").value=g.originalPriceCoins??g.priceCoins??0;byId("shortDescription").value=g.shortDescription||"";byId("description").value=g.description||"";byId("coverUrl").value=g.coverUrl||"";byId("gameIcon").value=g.icon||"🎮";byId("badge").value=g.badge||"";byId("theme").value=g.theme||"default";byId("playUrl").value=g.playUrl||"";byId("downloadUrl").value=g.downloadUrl||"";byId("releaseDate").value=g.releaseDate?String(g.releaseDate).slice(0,10):"";byId("tags").value=(g.tags||[]).join(", ");byId("reqOs").value=g.requirements?.os||"";byId("reqCpu").value=g.requirements?.cpu||"";byId("reqRam").value=g.requirements?.ram||"";byId("reqGpu").value=g.requirements?.gpu||"";byId("reqStorage").value=g.requirements?.storage||"";media=(item.media||[]).map((m,i)=>({type:m.type,url:m.url,thumbnailUrl:m.thumbnailUrl||"",sortOrder:i}));while(media.length<3)addMedia({type:"image",url:"",sortOrder:media.length});renderMedia();syncType();window.scrollTo({top:0,behavior:"smooth"})}
+  async function resubmit(id){try{const r=await api(`/api/store/publisher/games/${id}/resubmit`,{method:"POST"});status(r.message);await loadSubmissions()}catch(e){status(e.message,true)}}
+  function openVersion(id){byId("versionGameId").value=id;byId("newVersionName").value="";byId("newVersionChangelog").value="";byId("newVersionPlayUrl").value="";byId("newVersionDownloadUrl").value="";byId("versionStatus").textContent="";byId("versionModal").hidden=false;document.body.style.overflow="hidden"}
+  function closeVersion(){byId("versionModal").hidden=true;document.body.style.overflow=""}
+  async function submitVersion(event){event.preventDefault();const id=Number(byId("versionGameId").value);const btn=event.currentTarget.querySelector('button[type="submit"]');btn.disabled=true;try{const r=await api(`/api/store/publisher/games/${id}/versions`,{method:"POST",body:{versionName:byId("newVersionName").value.trim(),changelog:byId("newVersionChangelog").value.trim(),playUrl:byId("newVersionPlayUrl").value.trim()||null,downloadUrl:byId("newVersionDownloadUrl").value.trim()||null}});byId("versionStatus").textContent=r.message;setTimeout(()=>{closeVersion();loadSubmissions()},500)}catch(e){byId("versionStatus").textContent=e.message;byId("versionStatus").classList.add("error")}finally{btn.disabled=false}}
 
-  function setStatus(message, error = false) {
-    const el = byId("publisherStatus");
-    if (!el) return;
-    el.textContent = message;
-    el.classList.toggle("error", error);
-  }
+  async function loadAnalytics(){try{const r=await api("/api/store/publisher/analytics");const d=r.data||{};byId("pubTotal").textContent=fmt(d.totalGames);byId("pubPublished").textContent=fmt(d.published);byId("pubPending").textContent=fmt(d.pending);byId("pubPurchases").textContent=fmt(d.purchases);byId("pubRevenue").textContent=`${fmt(d.revenueCoins)} LC`}catch{}}
+  async function loadSubmissions(){const list=byId("submissionList");list.innerHTML='<div class="portal-empty">Đang tải...</div>';try{const r=await api("/api/store/publisher/games");submissions=r.data||[];list.innerHTML=submissions.length?submissions.map(x=>{const g=x.game||x;const versions=x.versions||[];return`<article class="publisher-game-card"><div class="submission-top"><div><h3>${esc(g.icon||"🎮")} ${esc(g.name)}</h3><div class="meta">${esc(g.type)} · ${fmt(g.priceCoins)} LC · ${(x.media||[]).length} media</div></div><span class="status-chip ${String(g.status).toLowerCase()}">${esc(g.status)}</span></div>${g.rejectionReason?`<p style="color:#ff9dab">Lý do: ${esc(g.rejectionReason)}</p>`:""}<div class="version-list">${versions.length?`Version: ${versions.slice(0,3).map(v=>`${esc(v.version)} (${esc(v.status)})`).join(" · ")}`:"Chưa có version"}</div><div class="publisher-game-actions">${g.status!=="Published"?`<button class="mini-btn" data-edit-publisher-game="${g.id}">Sửa game</button>`:""}${g.status==="Rejected"?`<button class="mini-btn primary" data-resubmit="${g.id}">Gửi lại</button>`:""}${g.status==="Published"?`<button class="mini-btn primary" data-new-version="${g.id}">+ Version mới</button>`:""}</div></article>`}).join(""):'<div class="portal-empty">Bạn chưa gửi game nào.</div>'}catch(e){list.innerHTML=`<div class="portal-empty" style="color:#ff9dab">${esc(e.message)}</div>`}}
+  async function boot(){const s=readSession();byId("publisherLoginRequired").hidden=!!s?.token;byId("publisherContent").hidden=!s?.token;if(!s?.token)return;resetForm();await Promise.all([loadAnalytics(),loadSubmissions()])}
 
-  function syncType(resetRequirements = true) {
-    const web = byId("gameType").value === "web";
-    byId("playUrlLabel").hidden = !web;
-    byId("downloadUrlLabel").hidden = web;
-
-    if (!resetRequirements) return;
-    byId("reqOs").value = web ? "Trình duyệt hiện đại" : "Windows 10";
-    byId("reqCpu").value = web ? "Bất kỳ" : "Intel i5 hoặc tương đương";
-    byId("reqRam").value = web ? "2 GB" : "8 GB";
-    byId("reqGpu").value = web ? "WebGL" : "GTX 1050 hoặc tương đương";
-    byId("reqStorage").value = web ? "Không cần cài đặt" : "2 GB";
-  }
-
-  async function loadSubmissions() {
-    const list = byId("submissionList");
-    if (!list) return;
-    list.innerHTML = '<div class="portal-empty">Đang tải...</div>';
-
-    try {
-      const result = await api("/api/store/publisher/games");
-      const items = Array.isArray(result.data) ? result.data : [];
-      list.innerHTML = items.length ? items.map(game => `
-        <article class="submission-item">
-          <div class="submission-top">
-            <div>
-              <h3>${escapeHtml(game.name)}</h3>
-              <p>${escapeHtml(game.type)} · ${Number(game.priceCoins || 0).toLocaleString("vi-VN")} LC</p>
-            </div>
-            <span class="status-chip ${String(game.status).toLowerCase()}">${escapeHtml(game.status)}</span>
-          </div>
-          <div class="tag-stack">${(game.tags || []).map(t => `<span>${escapeHtml(t)}</span>`).join("")}</div>
-          ${game.rejectionReason ? `<p style="margin-top:12px;color:#ff9dab">Lý do: ${escapeHtml(game.rejectionReason)}</p>` : ""}
-        </article>`).join("") : '<div class="portal-empty">Bạn chưa gửi game nào.</div>';
-    } catch (error) {
-      list.innerHTML = `<div class="portal-empty" style="color:#ff9dab">${escapeHtml(error.message)}</div>`;
-    }
-  }
-
-  async function boot() {
-    const session = readSession();
-    byId("publisherLoginRequired").hidden = !!session?.token;
-    byId("publisherContent").hidden = !session?.token;
-    if (!session?.token) return;
-
-    if (!byId("publisherName").value) {
-      byId("publisherName").value = session.effectiveDisplayName || session.displayName || session.name || "";
-    }
-    syncType(false);
-    await loadSubmissions();
-  }
-
-  byId("gameType")?.addEventListener("change", () => syncType(true));
-  byId("refreshSubmissions")?.addEventListener("click", loadSubmissions);
-
-  byId("gameSubmissionForm")?.addEventListener("submit", async event => {
-    event.preventDefault();
-
-    // Giữ reference trước await. event.currentTarget có thể trở thành null sau khi
-    // event handler nhường quyền điều khiển cho event loop.
-    const form = event.currentTarget;
-    const submitButton = form.querySelector('button[type="submit"]');
-    const originalButtonText = submitButton?.textContent || "Gửi game để Admin duyệt";
-
-    if (submitButton?.disabled) return;
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = "Đang gửi game...";
-    }
-    setStatus("Đang gửi game lên server...");
-
-    const type = byId("gameType").value;
-    const payload = {
-      name: byId("gameName").value.trim(),
-      publisherName: byId("publisherName").value.trim(),
-      type,
-      priceCoins: Number(byId("priceCoins").value || 0),
-      shortDescription: byId("shortDescription").value.trim(),
-      description: byId("description").value.trim(),
-      coverUrl: byId("coverUrl").value.trim(),
-      icon: byId("gameIcon").value.trim() || "🎮",
-      badge: byId("badge").value.trim(),
-      theme: byId("theme").value.trim() || "default",
-      playUrl: type === "web" ? byId("playUrl").value.trim() : "",
-      downloadUrl: type === "download" ? byId("downloadUrl").value.trim() : "",
-      releaseDate: byId("releaseDate").value || null,
-      tags: byId("tags").value.split(",").map(v => v.trim()).filter(Boolean),
-      recommendedOs: byId("reqOs").value.trim(),
-      recommendedCpu: byId("reqCpu").value.trim(),
-      recommendedRam: byId("reqRam").value.trim(),
-      recommendedGpu: byId("reqGpu").value.trim(),
-      recommendedStorage: byId("reqStorage").value.trim()
-    };
-
-    try {
-      const result = await api("/api/store/publisher/games", { method: "POST", body: payload });
-      setStatus(result.message || "Đã gửi game để Admin duyệt.");
-
-      form.reset();
-      const session = readSession();
-      byId("publisherName").value = session?.effectiveDisplayName || session?.displayName || session?.name || "";
-      byId("gameType").value = "web";
-      syncType(true);
-
-      await loadSubmissions();
-    } catch (error) {
-      setStatus(error.message, true);
-    } finally {
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = originalButtonText;
-      }
-    }
-  });
-
-  window.addEventListener("storage", boot);
-  window.addEventListener("lvg:session-hydrated", () => {
-    if (readSession()?.token) boot();
-  });
-
-  setTimeout(boot, 0);
+  byId("gameType").addEventListener("change",()=>{byId("reqOs").value="";byId("reqCpu").value="";byId("reqRam").value="";byId("reqGpu").value="";byId("reqStorage").value="";syncType()});byId("addMedia").addEventListener("click",()=>addMedia());byId("uploadDownloadFile").addEventListener("click",uploadBuild);byId("gameSubmissionForm").addEventListener("submit",submitGame);byId("refreshSubmissions").addEventListener("click",()=>Promise.all([loadAnalytics(),loadSubmissions()]));byId("cancelEditGame").addEventListener("click",resetForm);byId("versionForm").addEventListener("submit",submitVersion);byId("versionModal").addEventListener("click",e=>{if(e.target.closest("[data-close-version]"))closeVersion()});
+  document.addEventListener("input",e=>{const row=e.target.closest("[data-media-index]");if(row&&(e.target.matches("[data-media-url]")||e.target.matches("[data-media-type]"))){syncMediaFromDom();const i=Number(row.dataset.mediaIndex);row.querySelector(".media-preview").innerHTML=previewHtml(media[i])}});document.addEventListener("click",e=>{const upload=e.target.closest("[data-upload-media]");if(upload)return uploadMedia(Number(upload.dataset.uploadMedia));const remove=e.target.closest("[data-remove-media]");if(remove){media.splice(Number(remove.dataset.removeMedia),1);renderMedia();return}const edit=e.target.closest("[data-edit-publisher-game]");if(edit)return editGame(Number(edit.dataset.editPublisherGame));const res=e.target.closest("[data-resubmit]");if(res)return resubmit(Number(res.dataset.resubmit));const ver=e.target.closest("[data-new-version]");if(ver)return openVersion(Number(ver.dataset.newVersion))});
+  window.addEventListener("lvg:session-hydrated",()=>{if(byId("publisherContent").hidden)boot()});setTimeout(boot,0);
 })();
