@@ -167,8 +167,6 @@ window.APP_CONFIG = {
       inspectResponse(response, url, authenticated);
       return response.clone();
     } catch (error) {
-      // Railway đang ngủ/cold-start hoặc mạng tạm chậm: dùng trạng thái server đã cache,
-      // không xóa phiên và không làm UI treo. 401 thật vẫn được xử lý phía trên.
       const cached = cachedMeResponse();
       if (cached) return cached;
       throw error;
@@ -239,7 +237,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2310-stable";
+const version = "20260808-0015-headerfix";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
