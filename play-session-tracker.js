@@ -77,7 +77,7 @@
     if (!gameplayRequested || !playSession || ending || document.hidden) return;
     if (await restartExpiredLease()) return;
     try {
-      const response = await fetch(`${API}/api/store/play-sessions/checkpoint`, {
+      const response = await fetch(`${API}/api/store/play-sessions/lease`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: playSession.sessionId, clientToken: playSession.clientToken })
