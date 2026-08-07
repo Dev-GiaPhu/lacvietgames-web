@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070b16">
+  <title>Admin Center | LacVietGames</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./store.css">
+  <link rel="stylesheet" href="./portal.css">
+</head>
+<body class="portal-page" data-page="admin">
+  <header class="site-header">
+    <div class="topbar">
+      <a class="logo" href="./index.html"><span class="logo-mark">LV</span><span>LacVietGames</span></a>
+      <nav class="main-nav"><a href="./index.html">Cửa hàng</a><a href="./publisher.html">Publisher</a><a class="active" href="./admin.html">Admin</a></nav>
+      <div class="header-actions"><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập</button></div>
+    </div>
+  </header>
+
+  <main class="portal-shell">
+    <div class="portal-head"><div><span class="eyebrow">Administration</span><h1>LacVietGames Admin Center</h1><p>Duyệt game do người dùng gửi, chỉnh metadata catalog, quản lý tài khoản và điều chỉnh Lạc Coin. Tất cả thao tác quan trọng đi qua API server.</p></div><a class="btn btn-secondary" href="./index.html">← Cửa hàng</a></div>
+
+    <section id="adminDenied" class="portal-card" hidden><h2>Không có quyền truy cập</h2><p id="adminDeniedText">Trang này chỉ dành cho Admin.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập tài khoản Admin</button></section>
+
+    <section id="adminContent" hidden>
+      <div class="admin-tabs">
+        <button class="active" data-admin-tab="pending">Game chờ duyệt</button>
+        <button data-admin-tab="all">Tất cả game</button>
+        <button data-admin-tab="users">Người dùng</button>
+      </div>
+      <div id="adminStatus" class="portal-status"></div>
+      <section id="adminGamesPanel" class="portal-card"><div class="portal-toolbar"><div><h2 style="margin:0">Danh sách game</h2><small style="color:#8492ab">Duyệt, từ chối hoặc chỉnh sửa trước khi xuất bản</small></div><button id="refreshAdmin" class="mini-btn" type="button">Làm mới</button></div><div id="adminGameList" class="admin-list"></div></section>
+      <section id="adminUsersPanel" class="portal-card" hidden><div class="portal-toolbar"><div><h2 style="margin:0">Người dùng</h2><small style="color:#8492ab">Sửa tên, quyền và điều chỉnh coin có lịch sử</small></div><input id="userSearch" type="search" placeholder="Tìm email / tên"></div><div id="adminUserList" class="admin-list"></div></section>
+    </section>
+  </main>
+
+  <div id="adminEditModal" class="server-auth-modal" hidden>
+    <section class="server-auth-card" style="width:min(760px,100%);max-height:90vh;overflow:auto">
+      <button id="closeAdminEdit" class="server-auth-close" type="button">×</button>
+      <h2>Chỉnh sửa game</h2>
+      <form id="adminGameForm" class="portal-form">
+        <input id="editGameId" type="hidden">
+        <div class="two"><label>Tên game<input id="editName" required></label><label>Slug<input id="editSlug" required></label></div>
+        <div class="three"><label>Loại<select id="editType"><option value="web">Web</option><option value="download">Download</option></select></label><label>Giá coin<input id="editPrice" type="number" min="0"></label><label>Trạng thái<select id="editStatus"><option>Pending</option><option>Published</option><option>Rejected</option></select></label></div>
+        <label>Nhà phát hành<input id="editPublisher"></label>
+        <label>Mô tả ngắn<input id="editShort"></label>
+        <label>Mô tả<textarea id="editDescription"></textarea></label>
+        <div class="two"><label>Tags<input id="editTags"></label><label>Ảnh bìa URL<input id="editCover"></label></div>
+        <div class="two"><label>Play URL<input id="editPlay"></label><label>Download URL<input id="editDownload"></label></div>
+        <div class="three"><label>OS<input id="editOs"></label><label>CPU<input id="editCpu"></label><label>RAM<input id="editRam"></label></div>
+        <div class="two"><label>GPU<input id="editGpu"></label><label>Dung lượng<input id="editStorage"></label></div>
+        <label>Lý do từ chối<textarea id="editRejectReason"></textarea></label>
+        <button class="btn btn-primary" type="submit">Lưu thay đổi</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="./config.js"></script>
+  <script src="./admin.js"></script>
+</body>
+</html>
