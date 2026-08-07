@@ -16,8 +16,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2110";
-
+const version = "20260807-2120";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
@@ -29,5 +28,6 @@ loadScript("./registration-flow.js");
 loadScript("./store-session.js");
 loadScript("./account-enhancements.js");
 loadScript("./display-name-global.js");
+loadScript("./wallet-session-guard.js");
 loadScript("./footer-links.js");
 loadScript("./protected-pages.js");
