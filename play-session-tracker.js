@@ -8,7 +8,9 @@
   let checkpointTimer = null;
   let ending = false;
   let starting = false;
+  let gameplayRequested = false;
   let lastLeaseAt = 0;
+  let retryTimer = null;
 
   function readSession() {
     if (window.LVGSession?.read) return window.LVGSession.read();
@@ -18,10 +20,16 @@
     return null;
   }
 
+  function scheduleRetry() {
+    clearTimeout(retryTimer);
+    if (!gameplayRequested || playSession || starting) return;
+    retryTimer = setTimeout(() => startSession(), 4000);
+  }
+
   async function startSession() {
-    if (starting || playSession || !gameSlug) return;
+    if (!gameplayRequested || starting || playSession || !gameSlug) return;
     const account = readSession();
-    if (!account?.token) return;
+    if (!account?.token) { scheduleRetry(); return; }
     starting = true;
     try {
       const response = await fetch(`${API}/api/store/play-sessions/start`, {
@@ -30,7 +38,10 @@
         body: JSON.stringify({ gameSlug })
       });
       const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.data?.sessionId || !payload?.data?.clientToken) return;
+      if (!response.ok || !payload?.data?.sessionId || !payload?.data?.clientToken) {
+        scheduleRetry();
+        return;
+      }
       playSession = payload.data;
       ending = false;
       lastLeaseAt = Date.now();
@@ -39,7 +50,10 @@
       window.dispatchEvent(new CustomEvent("lvg:play-session-started", { detail: playSession }));
     } catch (error) {
       console.warn("LacVietGames play session start failed", error);
-    } finally { starting = false; }
+      scheduleRetry();
+    } finally {
+      starting = false;
+    }
   }
 
   function scheduleCheckpoint(seconds) {
@@ -49,7 +63,8 @@
   }
 
   async function restartExpiredLease() {
-    if (!playSession) return startSession();
+    if (!gameplayRequested) return false;
+    if (!playSession) { await startSession(); return true; }
     if (Date.now() - lastLeaseAt <= LEASE_EXPIRE_MS) return false;
     clearInterval(checkpointTimer);
     playSession = null;
@@ -59,7 +74,7 @@
   }
 
   async function checkpoint() {
-    if (!playSession || ending || document.hidden) return;
+    if (!gameplayRequested || !playSession || ending || document.hidden) return;
     if (await restartExpiredLease()) return;
     try {
       const response = await fetch(`${API}/api/store/play-sessions/checkpoint`, {
@@ -72,18 +87,23 @@
         return;
       }
       if (response.status === 404 || response.status === 410) {
+        clearInterval(checkpointTimer);
         playSession = null;
         window.LVGPlaySession = null;
-        await startSession();
+        scheduleRetry();
       }
     } catch {}
   }
 
   async function endSession({ returnToStore = false, beacon = false } = {}) {
+    clearTimeout(retryTimer);
+    gameplayRequested = false;
+
     if (!playSession || ending) {
       if (returnToStore) location.href = `./game.html?id=${encodeURIComponent(gameSlug)}`;
       return;
     }
+
     ending = true;
     clearInterval(checkpointTimer);
     const body = { sessionId: playSession.sessionId, clientToken: playSession.clientToken };
@@ -108,27 +128,38 @@
         window.dispatchEvent(new CustomEvent("lvg:play-session-ended", { detail: payload?.data || finished }));
       } catch {}
     }
+
     ending = false;
     if (returnToStore) location.href = `./game.html?id=${encodeURIComponent(gameSlug)}`;
   }
+
+  function gameplayStart() {
+    gameplayRequested = true;
+    startSession();
+  }
+
+  window.LVGPlayTracker = {
+    start: gameplayStart,
+    end: () => endSession(),
+    returnToStore: () => endSession({ returnToStore: true }),
+    checkpoint
+  };
 
   window.addEventListener("message", event => {
     const iframe = document.querySelector(".play-shell iframe");
     if (!iframe || event.source !== iframe.contentWindow) return;
     const type = event.data?.type;
-    if (type === "LVG_GAMEPLAY_START") startSession();
+    if (type === "LVG_GAMEPLAY_START") gameplayStart();
     if (type === "LVG_GAMEPLAY_END") endSession();
     if (type === "LVG_RETURN_TO_STORE") endSession({ returnToStore: true });
   });
 
   window.addEventListener("pagehide", () => endSession({ beacon: true }));
   window.addEventListener("beforeunload", () => endSession({ beacon: true }));
-  window.addEventListener("lvg:session-hydrated", startSession);
+  window.addEventListener("lvg:session-hydrated", () => { if (gameplayRequested) startSession(); });
   document.addEventListener("visibilitychange", async () => {
-    if (document.hidden) return;
+    if (document.hidden || !gameplayRequested) return;
     if (!playSession) await startSession();
     else await restartExpiredLease();
   });
-
-  startSession();
 })();
