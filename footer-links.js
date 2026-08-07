@@ -5,8 +5,28 @@ document.addEventListener("DOMContentLoaded", () => {
     "Chính sách bảo mật": "./privacy.html",
     "Liên hệ đối tác": "./partners.html"
   };
-  document.querySelectorAll(".site-footer a").forEach(link => {
-    const href = supportLinks[link.textContent.trim()];
-    if (href) link.href = href;
-  });
+
+  const enhanceFooter = () => {
+    document.querySelectorAll(".site-footer a").forEach(link => {
+      const href = supportLinks[link.textContent.trim()];
+      if (href) link.href = href;
+    });
+
+    const columns = [...document.querySelectorAll(".site-footer .footer-column")];
+    const platform = columns.find(c => c.querySelector("h4")?.textContent.trim() === "Nền tảng");
+    if (platform && !platform.querySelector('a[href="./wishlist.html"]')) {
+      const library = [...platform.querySelectorAll("a")].find(a => a.textContent.trim() === "Thư viện");
+      const link = document.createElement("a"); link.href = "./wishlist.html"; link.textContent = "Yêu thích";
+      library?.insertAdjacentElement("afterend", link);
+    }
+
+    const support = columns.find(c => c.querySelector("h4")?.textContent.trim() === "Hỗ trợ");
+    if (support && !support.querySelector('a[href="./refund.html"]')) {
+      support.insertAdjacentHTML("beforeend", '<a href="./refund.html">Chính sách hoàn tiền</a><a href="./publisher-terms.html">Điều khoản Publisher</a><a href="./content-policy.html">Chính sách nội dung</a>');
+    }
+  };
+
+  enhanceFooter();
+  window.addEventListener("load", enhanceFooter, { once: true });
+  setTimeout(enhanceFooter, 250);
 });
