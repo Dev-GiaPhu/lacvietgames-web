@@ -104,6 +104,9 @@ window.APP_CONFIG = {
     if (data.email != null) session.email = data.email;
     if (data.role != null) session.role = data.role;
     if (data.coinBalance != null) session.coinBalance = data.coinBalance;
+    if (data.unreadNotifications != null) session.unreadNotifications = data.unreadNotifications;
+    if (Array.isArray(data.library)) session.library = data.library;
+    session.serverValidatedAt = Date.now();
     located.storage.setItem(STORE_KEY, JSON.stringify(session));
     window.dispatchEvent(new CustomEvent("lvg:session-hydrated", { detail: session }));
   }
@@ -149,12 +152,10 @@ window.APP_CONFIG = {
     }
   });
 
-  // Chỉ kiểm tra thời hạn local khi quay lại tab; không gọi API.
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) scheduleExpiry();
   });
 
-  // Một lần sau boot: nếu lần xác minh /me ban đầu vừa xoá token lỗi thì render logout ngay.
   const hadSessionAtBoot = !!initial?.token;
   if (hadSessionAtBoot) {
     setTimeout(() => {
@@ -177,7 +178,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2133-session3";
+const version = "20260807-2230-header";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
@@ -187,6 +188,7 @@ function loadScript(path) {
 
 loadScript("./registration-flow.js");
 loadScript("./store-session.js");
+loadScript("./header-authority.js");
 loadScript("./account-enhancements.js");
 loadScript("./display-name-global.js");
 loadScript("./footer-links.js");
