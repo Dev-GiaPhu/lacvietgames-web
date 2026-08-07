@@ -7,7 +7,7 @@ window.APP_CONFIG = {
  * - Không polling server.
  * - Token v2 tự chứa thời hạn; trình duyệt kiểm tra thời hạn hoàn toàn local.
  * - Request API có Authorization nếu nhận 401 sẽ xoá session ngay.
- * - /api/store/me chỉ được dùng để xác minh khi mở trang; dữ liệu response được cache local.
+ * - Các request /api/store/me phát sinh đồng thời lúc boot được gộp thành 1 request mạng.
  */
 (() => {
   const STORE_KEY = "lacvietgamesStoreSession";
@@ -16,6 +16,8 @@ window.APP_CONFIG = {
   const RELOAD_KEY = "__lvg_session_refreshing";
   let expiryTimer = null;
   let invalidating = false;
+  let inflightMe = null;
+  let inflightMeClearTimer = null;
 
   function locate() {
     for (const storage of [localStorage, sessionStorage]) {
@@ -124,15 +126,10 @@ window.APP_CONFIG = {
 
   window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount };
 
-  // Không tạo request mới: chỉ xử lý response của request mà ứng dụng vốn đã gọi.
   const nativeFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init) {
-    const response = await nativeFetch(input, init);
-    try {
-      const url = typeof input === "string" ? input : input?.url || "";
-      const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
-      const authenticated = url.startsWith(API_BASE) && headers.has("Authorization");
 
+  function inspectResponse(response, url, authenticated) {
+    try {
       if (response.status === 401 && authenticated) {
         queueMicrotask(() => invalidate("server-unauthorized"));
       } else if (response.ok && authenticated && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) {
@@ -142,6 +139,38 @@ window.APP_CONFIG = {
         }).catch(() => {});
       }
     } catch {}
+  }
+
+  window.fetch = async function(input, init) {
+    const url = typeof input === "string" ? input : input?.url || "";
+    const method = String(init?.method || (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+    let headers;
+    try {
+      headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
+    } catch {
+      headers = new Headers();
+    }
+    const authenticated = url.startsWith(API_BASE) && headers.has("Authorization");
+    const isMeRequest = authenticated && method === "GET" && url.includes("/api/store/me");
+
+    if (isMeRequest) {
+      if (!inflightMe) {
+        inflightMe = nativeFetch(input, init).then(response => {
+          inspectResponse(response, url, authenticated);
+          // Giữ một template response chưa bị consumer đọc body; mọi caller nhận clone riêng.
+          return response.clone();
+        });
+        inflightMe.finally(() => {
+          clearTimeout(inflightMeClearTimer);
+          inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 1200);
+        }).catch(() => {});
+      }
+      const template = await inflightMe;
+      return template.clone();
+    }
+
+    const response = await nativeFetch(input, init);
+    inspectResponse(response, url, authenticated);
     return response;
   };
 
@@ -178,7 +207,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2230-header";
+const version = "20260807-2255-stable";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
