@@ -1,5 +1,5 @@
 (() => {
-  const SALE_PAGE='./sale.html';
+  const SALE_PAGE='./sales.html';
 
   function applyDefault(){
     const input=document.getElementById('saleAnnUrl');
