@@ -41,5 +41,15 @@
   async function toggleTask(id){try{const p=await req(`/api/store/admin/task-events/${id}/toggle`,{method:'POST'});status(p.message);await load()}catch(e){status(e.message,true)}}
   async function remove(id){if(!confirm('Xóa nhiệm vụ này? Tiến độ của người dùng cho nhiệm vụ này cũng sẽ bị xóa.'))return;try{const p=await req(`/api/store/admin/task-events/${id}`,{method:'DELETE'});status(p.message);await load()}catch(e){status(e.message,true)}}
 
+  function loadSaleRouting(){
+    if(document.querySelector('script[data-admin-sale-routing]'))return;
+    const script=document.createElement('script');
+    script.dataset.adminSaleRouting='1';
+    script.src='./admin-sale-routing.js?v=20260808-0430-sales-routing';
+    script.async=false;
+    document.head.appendChild(script);
+  }
+
   installUi();
+  loadSaleRouting();
 })();
