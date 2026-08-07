@@ -2,7 +2,6 @@ window.APP_CONFIG = {
   API_BASE_URL: "https://lacvietgames-api-production.up.railway.app"
 };
 
-// Không bao giờ hiển thị số coin demo trước khi server xác nhận phiên đăng nhập.
 const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `
   .header-actions > .coin-pill { display: none !important; }
@@ -19,3 +18,8 @@ const storeSessionScript = document.createElement("script");
 storeSessionScript.src = "./store-session.js";
 storeSessionScript.defer = true;
 document.head.appendChild(storeSessionScript);
+
+const footerLinksScript = document.createElement("script");
+footerLinksScript.src = "./footer-links.js";
+footerLinksScript.defer = true;
+document.head.appendChild(footerLinksScript);
