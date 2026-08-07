@@ -14,6 +14,8 @@
   }
 
   function ensureShell(){
+    const direct=document.getElementById("tasksGrid");
+    if(direct)return direct;
     const app=document.getElementById("app");
     if(!app)return null;
     if(!app.querySelector("#tasksGrid")){
@@ -54,7 +56,7 @@
   }
 
   function bootWhenStoreReady(){
-    if(document.querySelector("#siteHeader .site-header")||bootAttempts>=40){load();return;}
+    if(document.getElementById("tasksGrid")||document.querySelector("#siteHeader .site-header")||document.querySelector("body.tasks-page .site-header")||bootAttempts>=40){load();return;}
     bootAttempts++;
     setTimeout(bootWhenStoreReady,100);
   }
