@@ -63,8 +63,6 @@ window.APP_CONFIG = {
     document.body?.classList.remove("server-authenticated");
     window.dispatchEvent(new CustomEvent("lvg:session-invalid"));
 
-    // Reload đúng một lần để mọi trang (profile, wallet, library...) render lại
-    // từ trạng thái logout thay vì giữ HTML được dựng từ localStorage cũ.
     if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) {
       sessionStorage.setItem(RELOAD_KEY, "1");
       location.reload();
@@ -94,7 +92,7 @@ window.APP_CONFIG = {
       return;
     }
 
-    // setTimeout của browser có giới hạn ~24.8 ngày; chia thành các lần local.
+    // Browser giới hạn một timer dài khoảng 24.8 ngày; chia thành các timer local.
     expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining + 50, 2_000_000_000));
   }
 
@@ -128,7 +126,7 @@ window.APP_CONFIG = {
 
   // Logout ở tab khác được phản ánh ngay, không gọi server.
   window.addEventListener("storage", event => {
-    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && read()) {
+    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) {
       clear();
       refreshLoggedOutUi();
     }
@@ -163,7 +161,7 @@ serverWalletGuardStyle.textContent = `
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260807-2133-session";
+const version = "20260807-2133-session2";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
