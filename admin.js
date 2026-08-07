@@ -1,120 +1,349 @@
 (() => {
   const apiBase = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
+  const STORE_KEY = "lacvietgamesStoreSession";
   const byId = id => document.getElementById(id);
-  const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
-  const fmt = n => Number(n || 0).toLocaleString("vi-VN");
-  const money = n => `${Number(n || 0).toLocaleString("vi-VN")}đ`;
+  const esc = (value = "") => String(value).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
+  const fmt = value => Number(value || 0).toLocaleString("vi-VN");
+  const money = value => `${Number(value || 0).toLocaleString("vi-VN")}đ`;
+  const when = value => value ? new Date(value).toLocaleString("vi-VN") : "—";
 
-  let activeTab = "pending";
+  let currentAdmin = null;
+  let activeSection = "dashboard";
   let games = [];
   let users = [];
   let coinPackages = [];
+  let transactions = [];
 
-  const readSession = () => {
-    if (window.LVGSession?.read) return window.LVGSession.read();
-    for (const s of [localStorage, sessionStorage]) {
-      try { const raw = s.getItem("lacvietgamesStoreSession"); if (raw) return JSON.parse(raw); } catch {}
+  function readSession() {
+    for (const storage of [sessionStorage, localStorage]) {
+      try {
+        const raw = storage.getItem(STORE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch {}
     }
     return null;
-  };
+  }
 
-  async function api(path, options = {}) {
+  function clearSession() {
+    for (const storage of [sessionStorage, localStorage]) {
+      try {
+        storage.removeItem(STORE_KEY);
+        storage.removeItem("lacvietgamesSession");
+      } catch {}
+    }
+  }
+
+  function saveAdminSession(result) {
+    const account = result?.data?.account;
+    if (!account || String(account.role).toLowerCase() !== "admin") return false;
+    clearSession();
+    sessionStorage.setItem(STORE_KEY, JSON.stringify({
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: account.role,
+      coinBalance: account.coinBalance,
+      verified: account.isEmailVerified,
+      token: result.data.token,
+      loginAt: new Date().toISOString()
+    }));
+    return true;
+  }
+
+  async function request(path, options = {}, auth = true) {
     const session = readSession();
-    if (!session?.token) throw Object.assign(new Error("Bạn cần đăng nhập."), { code: "AUTH_REQUIRED" });
-    const response = await fetch(`${apiBase}${path}`, {
-      method: options.method || "GET",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || payload?.success === false) throw Object.assign(new Error(payload?.message || "Không thể xử lý yêu cầu."), { code: payload?.code, status: response.status });
-    return payload;
+    if (auth && !session?.token) throw Object.assign(new Error("Bạn chưa đăng nhập Admin."), { status:401 });
+    const headers = { "Content-Type":"application/json", ...(options.headers || {}) };
+    if (auth) headers.Authorization = `Bearer ${session.token}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(`${apiBase}${path}`, {
+        method: options.method || "GET",
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.success === false) {
+        const error = new Error(payload?.message || "Không thể xử lý yêu cầu.");
+        error.status = response.status;
+        error.code = payload?.code;
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("Server phản hồi chậm. Vui lòng thử lại.");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function gateMessage(message = "", success = false) {
+    const el = byId("adminGateStatus");
+    el.textContent = message;
+    el.classList.toggle("success", success);
   }
 
   function status(message = "", error = false) {
     const el = byId("adminStatus");
-    if (!el) return;
     el.textContent = message;
     el.classList.toggle("error", error);
   }
 
+  function showGate(message = "") {
+    currentAdmin = null;
+    byId("adminShell").hidden = true;
+    byId("adminGate").hidden = false;
+    gateMessage(message);
+  }
+
+  function showShell(account) {
+    currentAdmin = account;
+    byId("adminGate").hidden = true;
+    byId("adminShell").hidden = false;
+    const name = account.effectiveDisplayName || account.displayName || account.name || "Admin";
+    byId("adminIdentity").textContent = `${name} · ${account.email || ""}`;
+    byId("adminAvatar").textContent = name.charAt(0).toUpperCase();
+  }
+
   async function boot() {
+    const session = readSession();
+    if (!session?.token) return showGate();
     try {
-      const me = await api("/api/store/me");
-      if (String(me.data.role).toLowerCase() !== "admin") throw new Error("Tài khoản hiện tại không có quyền Admin.");
-      byId("adminDenied").hidden = true;
-      byId("adminContent").hidden = false;
-      await loadGames(true);
+      const me = await request("/api/store/me");
+      if (String(me.data?.role).toLowerCase() !== "admin") {
+        return showGate(`Tài khoản ${me.data?.email || "hiện tại"} không có quyền Admin.`);
+      }
+      showShell(me.data);
+      await loadDashboard();
     } catch (error) {
-      byId("adminContent").hidden = true;
-      byId("adminDenied").hidden = false;
-      byId("adminDeniedText").textContent = error.message;
+      if (error.status === 401 || error.status === 403) clearSession();
+      showGate(error.status === 403 ? "Tài khoản hiện tại không có quyền Admin." : "Phiên Admin không còn hợp lệ. Vui lòng đăng nhập lại.");
     }
   }
 
-  async function loadGames(pendingOnly = activeTab === "pending") {
-    byId("adminGameList").innerHTML = '<div class="portal-empty">Đang tải...</div>';
+  async function loginAdmin(event) {
+    event.preventDefault();
+    gateMessage("");
+    const button = byId("adminLoginButton");
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "Đang xác minh...";
     try {
-      const result = await api(`/api/store/admin/games${pendingOnly ? "?status=Pending" : ""}`);
+      const result = await request("/api/store/auth/login", {
+        method:"POST",
+        body:{
+          email:byId("adminLoginEmail").value.trim().toLowerCase(),
+          password:byId("adminLoginPassword").value
+        }
+      }, false);
+      if (String(result.data?.account?.role).toLowerCase() !== "admin") {
+        throw new Error("Tài khoản này đăng nhập được nhưng không có quyền Admin.");
+      }
+      saveAdminSession(result);
+      const me = await request("/api/store/me");
+      if (String(me.data?.role).toLowerCase() !== "admin") throw new Error("Server không xác nhận quyền Admin.");
+      showShell(me.data);
+      byId("adminLoginPassword").value = "";
+      await loadDashboard();
+    } catch (error) {
+      gateMessage(error.message || "Đăng nhập Admin thất bại.");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  function logoutAdmin() {
+    clearSession();
+    showGate("Đã đăng xuất khỏi Admin Center.");
+  }
+
+  function switchSection(section) {
+    activeSection = section;
+    document.querySelectorAll("[data-admin-section]").forEach(button => button.classList.toggle("active", button.dataset.adminSection === section));
+    document.querySelectorAll("[data-section-panel]").forEach(panel => panel.hidden = panel.dataset.sectionPanel !== section);
+    const titles = { dashboard:"Tổng quan hệ thống", pending:"Game chờ duyệt", games:"Tất cả game", users:"Người dùng", "coin-packages":"Gói Lạc Coin", transactions:"Giao dịch hệ thống" };
+    byId("adminPageTitle").textContent = titles[section] || "Admin Center";
+    status("");
+    if (section === "dashboard") loadDashboard();
+    if (section === "pending") loadGames(true);
+    if (section === "games") loadGames(false);
+    if (section === "users") loadUsers();
+    if (section === "coin-packages") loadCoinPackages();
+    if (section === "transactions") loadTransactions();
+  }
+
+  async function loadDashboard() {
+    try {
+      status("Đang tải Dashboard...");
+      const result = await request("/api/store/admin/dashboard");
+      const d = result.data || {};
+      byId("statUsers").textContent = fmt(d.users?.total);
+      byId("statVerifiedUsers").textContent = `${fmt(d.users?.verified)} đã xác minh`;
+      byId("statPending").textContent = fmt(d.games?.pending);
+      byId("navPendingCount").textContent = fmt(d.games?.pending);
+      byId("statPublished").textContent = fmt(d.games?.published);
+      byId("statTotalGames").textContent = `${fmt(d.games?.total)} tổng game`;
+      byId("statRevenue").textContent = money(d.payments?.revenueVnd);
+      byId("statTopups").textContent = `${fmt(d.payments?.completedTopups)} giao dịch nạp`;
+      byId("statWalletCoins").textContent = `${fmt(d.wallet?.totalCoinInWallets)} LC`;
+      byId("statPackages").textContent = fmt(d.coinPackages?.active);
+      renderDashboardSubmissions(d.recentSubmissions || []);
+      renderDashboardTransactions(d.recentTransactions || []);
+      status("");
+    } catch (error) {
+      handleAdminError(error, "Không tải được Dashboard.");
+    }
+  }
+
+  function renderDashboardSubmissions(items) {
+    byId("dashboardSubmissions").innerHTML = items.length ? items.map(g => `<div class="admin-row"><div class="admin-row-top"><div><h4>${esc(g.name)}</h4><div class="admin-meta"><span>${esc(g.publisherName)}</span><span>${when(g.createdAt)}</span></div></div><span class="admin-chip ${String(g.status).toLowerCase()}">${esc(g.status)}</span></div></div>`).join("") : '<div class="admin-empty">Chưa có game được gửi.</div>';
+  }
+
+  function renderDashboardTransactions(items) {
+    byId("dashboardTransactions").innerHTML = items.length ? items.map(t => `<div class="admin-row"><div class="admin-row-top"><div><h4>${esc(t.description || t.type)}</h4><div class="admin-meta"><span>${esc(t.accountName || t.email)}</span><span>${when(t.createdAt)}</span></div></div><strong>${Number(t.coinAmount || 0) >= 0 ? "+" : ""}${fmt(t.coinAmount)} LC</strong></div></div>`).join("") : '<div class="admin-empty">Chưa có giao dịch.</div>';
+  }
+
+  async function loadGames(pendingOnly) {
+    const target = byId(pendingOnly ? "pendingGameList" : "allGameList");
+    target.innerHTML = '<div class="admin-empty">Đang tải dữ liệu game...</div>';
+    try {
+      const result = await request(`/api/store/admin/games${pendingOnly ? "?status=Pending" : ""}`);
       games = result.data || [];
-      renderGames();
+      renderGames(target, games, pendingOnly);
     } catch (error) {
-      byId("adminGameList").innerHTML = `<div class="portal-empty" style="color:#ff9dab">${esc(error.message)}</div>`;
+      handleAdminError(error, "Không tải được danh sách game.", target);
     }
   }
 
-  function renderGames() {
-    byId("adminGameList").innerHTML = games.length ? games.map(g => `
-      <article class="admin-item">
-        <div class="admin-top"><div><h3>${esc(g.icon || "🎮")} ${esc(g.name)}</h3><p>${esc(g.publisherName)} · ${esc(g.type)} · ${fmt(g.priceCoins)} LC</p></div><span class="status-chip ${String(g.status).toLowerCase()}">${esc(g.status)}</span></div>
-        <div class="tag-stack">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join("")}</div>
-        <p style="margin-top:10px">${esc(g.shortDescription || "")}</p>
-        ${g.rejectionReason ? `<p style="margin-top:8px;color:#ff9dab">${esc(g.rejectionReason)}</p>` : ""}
-        <div class="admin-actions"><button class="mini-btn primary" data-approve="${g.id}">Duyệt</button><button class="mini-btn danger" data-reject="${g.id}">Từ chối</button><button class="mini-btn" data-edit-game="${g.id}">Sửa thông tin</button></div>
-      </article>`).join("") : '<div class="portal-empty">Không có game phù hợp.</div>';
+  function renderGames(target, items, pendingOnly) {
+    target.innerHTML = items.length ? items.map(g => {
+      const tags = (g.tags || []).map(tag => `<span class="admin-chip">${esc(tag)}</span>`).join(" ");
+      const urlInfo = [g.playUrl ? `<a href="${esc(g.playUrl)}" target="_blank" rel="noopener">Play URL</a>` : "", g.downloadUrl ? `<a href="${esc(g.downloadUrl)}" target="_blank" rel="noopener">Download URL</a>` : ""].filter(Boolean).join(" · ");
+      return `<article class="admin-row"><div class="admin-row-top"><div><h3>${esc(g.icon || "🎮")} ${esc(g.name)}</h3><div class="admin-meta"><span>ID #${g.id}</span><span>${esc(g.publisherName)}</span><span>${esc(g.type)}</span><span>${fmt(g.priceCoins)} LC</span><span>${when(g.createdAt)}</span></div></div><span class="admin-chip ${String(g.status).toLowerCase()}">${esc(g.status)}</span></div><p><b>Mô tả:</b> ${esc(g.shortDescription || g.description || "Chưa có mô tả")}</p><div class="admin-meta">${tags}</div>${urlInfo ? `<p>${urlInfo}</p>` : ""}${g.rejectionReason ? `<p style="color:#ff9bad"><b>Lý do từ chối:</b> ${esc(g.rejectionReason)}</p>` : ""}<div class="admin-row-actions">${g.status !== "Published" ? `<button class="admin-primary" type="button" data-approve="${g.id}">Duyệt & xuất bản</button>` : ""}<button class="admin-secondary" type="button" data-edit-game="${g.id}">Sửa chi tiết</button>${g.status !== "Rejected" ? `<button class="admin-danger-btn" type="button" data-reject="${g.id}">Từ chối</button>` : ""}</div></article>`;
+    }).join("") : `<div class="admin-empty">${pendingOnly ? "Không có game đang chờ duyệt." : "Chưa có game."}</div>`;
   }
 
-  async function approve(id) { try { status("Đang duyệt game..."); const r = await api(`/api/store/admin/games/${id}/approve`, { method:"POST" }); status(r.message); await loadGames(); } catch (e) { status(e.message, true); } }
-  async function reject(id) { const reason = prompt("Lý do từ chối game:", "Cần chỉnh sửa thông tin trước khi xuất bản."); if (reason === null) return; try { status("Đang cập nhật..."); const r = await api(`/api/store/admin/games/${id}/reject`, { method:"POST", body:{ reason } }); status(r.message); await loadGames(); } catch (e) { status(e.message, true); } }
-
-  function openEdit(id) {
-    const g = games.find(x => Number(x.id) === Number(id)); if (!g) return;
-    byId("editGameId").value = g.id; byId("editName").value = g.name || ""; byId("editSlug").value = g.slug || ""; byId("editType").value = g.type || "web"; byId("editPrice").value = g.priceCoins || 0; byId("editStatus").value = g.status || "Pending"; byId("editPublisher").value = g.publisherName || ""; byId("editShort").value = g.shortDescription || ""; byId("editDescription").value = g.description || ""; byId("editTags").value = (g.tags || []).join(", "); byId("editCover").value = g.coverUrl || ""; byId("editPlay").value = g.playUrl || ""; byId("editDownload").value = g.downloadUrl || ""; byId("editOs").value = g.requirements?.os || ""; byId("editCpu").value = g.requirements?.cpu || ""; byId("editRam").value = g.requirements?.ram || ""; byId("editGpu").value = g.requirements?.gpu || ""; byId("editStorage").value = g.requirements?.storage || ""; byId("editRejectReason").value = g.rejectionReason || "";
-    byId("adminEditModal").hidden = false; document.body.style.overflow = "hidden";
-  }
-  function closeEdit() { byId("adminEditModal").hidden = true; document.body.style.overflow = ""; }
-  async function saveEdit(event) {
-    event.preventDefault(); const id = Number(byId("editGameId").value); const original = games.find(g => Number(g.id) === id);
-    const payload = { name:byId("editName").value.trim(), slug:byId("editSlug").value.trim(), publisherName:byId("editPublisher").value.trim(), type:byId("editType").value, priceCoins:Number(byId("editPrice").value || 0), shortDescription:byId("editShort").value.trim(), description:byId("editDescription").value.trim(), tags:byId("editTags").value.split(",").map(v => v.trim()).filter(Boolean), coverUrl:byId("editCover").value.trim(), playUrl:byId("editPlay").value.trim(), downloadUrl:byId("editDownload").value.trim(), icon:original?.icon || "🎮", badge:original?.badge || "", theme:original?.theme || "default", releaseDate:original?.releaseDate || null, recommendedOs:byId("editOs").value.trim(), recommendedCpu:byId("editCpu").value.trim(), recommendedRam:byId("editRam").value.trim(), recommendedGpu:byId("editGpu").value.trim(), recommendedStorage:byId("editStorage").value.trim(), status:byId("editStatus").value, rejectionReason:byId("editRejectReason").value.trim() };
-    try { const r = await api(`/api/store/admin/games/${id}`, { method:"PUT", body:payload }); status(r.message); closeEdit(); await loadGames(false); } catch (e) { status(e.message, true); }
+  async function approveGame(id) {
+    try {
+      status("Đang duyệt game...");
+      const result = await request(`/api/store/admin/games/${id}/approve`, { method:"POST" });
+      status(result.message || "Đã duyệt game.");
+      await Promise.all([loadDashboard(), loadGames(activeSection === "pending")]);
+    } catch (error) { handleAdminError(error, "Không duyệt được game."); }
   }
 
-  async function loadUsers() { byId("adminUserList").innerHTML = '<div class="portal-empty">Đang tải...</div>'; try { const r = await api("/api/store/admin/users"); users = r.data || []; renderUsers(); } catch (e) { byId("adminUserList").innerHTML = `<div class="portal-empty" style="color:#ff9dab">${esc(e.message)}</div>`; } }
-  function renderUsers() { const q = byId("userSearch").value.trim().toLowerCase(); const filtered = users.filter(u => !q || `${u.name} ${u.email}`.toLowerCase().includes(q)); byId("adminUserList").innerHTML = filtered.length ? filtered.map(u => `<article class="admin-item user-row" data-user-row="${u.id}"><input data-user-name value="${esc(u.name)}"><div><b>${esc(u.email)}</b><small style="display:block;color:#7f8da7">${u.isEmailVerified ? "Đã xác minh" : "Chưa xác minh"}</small></div><select data-user-role><option ${u.role === "User" ? "selected" : ""}>User</option><option ${u.role === "Admin" ? "selected" : ""}>Admin</option></select><b>🪙 ${fmt(u.coinBalance)}</b><div class="admin-actions" style="margin:0"><button class="mini-btn primary" data-save-user="${u.id}">Lưu</button><button class="mini-btn" data-adjust-coin="${u.id}">± Coin</button></div></article>`).join("") : '<div class="portal-empty">Không tìm thấy người dùng.</div>'; }
-  async function saveUser(id) { const row = document.querySelector(`[data-user-row="${id}"]`); try { const r = await api(`/api/store/admin/users/${id}`, { method:"PUT", body:{ name:row.querySelector("[data-user-name]").value.trim(), role:row.querySelector("[data-user-role]").value } }); status(r.message); await loadUsers(); } catch (e) { status(e.message, true); } }
-  async function adjustCoin(id) { const text = prompt("Nhập số coin cần cộng hoặc trừ. Ví dụ 500 hoặc -200:", "500"); if (text === null) return; const amount = Number(text); if (!Number.isInteger(amount) || amount === 0) return alert("Số coin không hợp lệ."); const reason = prompt("Lý do điều chỉnh:", "Hỗ trợ người dùng") || "Điều chỉnh bởi Admin"; try { const r = await api(`/api/store/admin/users/${id}/coins`, { method:"POST", body:{ amount, reason } }); status(r.message); await loadUsers(); } catch (e) { status(e.message, true); } }
+  async function rejectGame(id) {
+    const reason = prompt("Lý do từ chối game:", "Cần chỉnh sửa thông tin trước khi xuất bản.");
+    if (reason === null) return;
+    try {
+      status("Đang từ chối game...");
+      const result = await request(`/api/store/admin/games/${id}/reject`, { method:"POST", body:{ reason } });
+      status(result.message || "Đã từ chối game.");
+      await Promise.all([loadDashboard(), loadGames(activeSection === "pending")]);
+    } catch (error) { handleAdminError(error, "Không từ chối được game."); }
+  }
+
+  function openGameEdit(id) {
+    const g = games.find(item => Number(item.id) === Number(id));
+    if (!g) return;
+    byId("editGameId").value = g.id;
+    byId("editName").value = g.name || "";
+    byId("editSlug").value = g.slug || "";
+    byId("editType").value = g.type || "web";
+    byId("editPrice").value = g.priceCoins || 0;
+    byId("editStatus").value = g.status || "Pending";
+    byId("editPublisher").value = g.publisherName || "";
+    byId("editShort").value = g.shortDescription || "";
+    byId("editDescription").value = g.description || "";
+    byId("editTags").value = (g.tags || []).join(", ");
+    byId("editCover").value = g.coverUrl || "";
+    byId("editPlay").value = g.playUrl || "";
+    byId("editDownload").value = g.downloadUrl || "";
+    byId("editOs").value = g.requirements?.os || "";
+    byId("editCpu").value = g.requirements?.cpu || "";
+    byId("editRam").value = g.requirements?.ram || "";
+    byId("editGpu").value = g.requirements?.gpu || "";
+    byId("editStorage").value = g.requirements?.storage || "";
+    byId("editRejectReason").value = g.rejectionReason || "";
+    byId("gameEditModal").hidden = false;
+  }
+
+  async function saveGame(event) {
+    event.preventDefault();
+    const id = Number(byId("editGameId").value);
+    const original = games.find(g => Number(g.id) === id) || {};
+    const payload = {
+      name:byId("editName").value.trim(), slug:byId("editSlug").value.trim(), publisherName:byId("editPublisher").value.trim(), type:byId("editType").value,
+      priceCoins:Number(byId("editPrice").value || 0), shortDescription:byId("editShort").value.trim(), description:byId("editDescription").value.trim(),
+      tags:byId("editTags").value.split(",").map(v => v.trim()).filter(Boolean), coverUrl:byId("editCover").value.trim(), playUrl:byId("editPlay").value.trim(), downloadUrl:byId("editDownload").value.trim(),
+      icon:original.icon || "🎮", badge:original.badge || "", theme:original.theme || "default", releaseDate:original.releaseDate || null,
+      recommendedOs:byId("editOs").value.trim(), recommendedCpu:byId("editCpu").value.trim(), recommendedRam:byId("editRam").value.trim(), recommendedGpu:byId("editGpu").value.trim(), recommendedStorage:byId("editStorage").value.trim(),
+      status:byId("editStatus").value, rejectionReason:byId("editRejectReason").value.trim()
+    };
+    try {
+      const result = await request(`/api/store/admin/games/${id}`, { method:"PUT", body:payload });
+      closeModal("game");
+      status(result.message || "Đã cập nhật game.");
+      await loadGames(activeSection === "pending");
+      await loadDashboard();
+    } catch (error) { handleAdminError(error, "Không lưu được game."); }
+  }
+
+  async function loadUsers() {
+    try {
+      const result = await request("/api/store/admin/users");
+      users = result.data || [];
+      renderUsers();
+    } catch (error) { handleAdminError(error, "Không tải được người dùng."); }
+  }
+
+  function renderUsers() {
+    const q = byId("userSearch").value.trim().toLowerCase();
+    const filtered = users.filter(u => !q || `${u.name} ${u.email}`.toLowerCase().includes(q));
+    byId("adminUserTable").innerHTML = filtered.length ? filtered.map(u => `<tr data-user-row="${u.id}"><td>#${u.id}</td><td class="admin-user-name"><input data-user-name value="${esc(u.name)}"></td><td>${esc(u.email)}</td><td><select data-user-role><option value="User" ${u.role === "User" ? "selected" : ""}>User</option><option value="Admin" ${u.role === "Admin" ? "selected" : ""}>Admin</option></select></td><td><b>${fmt(u.coinBalance)} LC</b></td><td>${u.isEmailVerified ? '<span class="admin-chip published">Đã xác minh</span>' : '<span class="admin-chip pending">Chưa xác minh</span>'}</td><td><div class="admin-actions"><button class="admin-secondary" type="button" data-save-user="${u.id}">Lưu</button><button class="admin-ghost" type="button" data-adjust-coin="${u.id}">± Coin</button></div></td></tr>`).join("") : '<tr><td colspan="7"><div class="admin-empty">Không tìm thấy người dùng.</div></td></tr>';
+  }
+
+  async function saveUser(id) {
+    const row = document.querySelector(`[data-user-row="${id}"]`);
+    try {
+      const result = await request(`/api/store/admin/users/${id}`, { method:"PUT", body:{ name:row.querySelector("[data-user-name]").value.trim(), role:row.querySelector("[data-user-role]").value } });
+      status(result.message || "Đã cập nhật người dùng.");
+      await loadUsers();
+    } catch (error) { handleAdminError(error, "Không cập nhật được người dùng."); }
+  }
+
+  async function adjustCoin(id) {
+    const amountText = prompt("Nhập số coin cần cộng hoặc trừ. Ví dụ 500 hoặc -200:", "500");
+    if (amountText === null) return;
+    const amount = Number(amountText);
+    if (!Number.isInteger(amount) || amount === 0) return alert("Số coin không hợp lệ.");
+    const reason = prompt("Lý do điều chỉnh:", "Điều chỉnh bởi Admin") || "Điều chỉnh bởi Admin";
+    try {
+      const result = await request(`/api/store/admin/users/${id}/coins`, { method:"POST", body:{ amount, reason } });
+      status(result.message || "Đã điều chỉnh coin.");
+      await Promise.all([loadUsers(), loadDashboard()]);
+    } catch (error) { handleAdminError(error, "Không điều chỉnh được coin."); }
+  }
 
   async function loadCoinPackages() {
-    const list = byId("coinPackageList"); list.innerHTML = '<div class="portal-empty">Đang tải...</div>';
-    try { const r = await api("/api/store/admin/coin-packages"); coinPackages = r.data || []; renderCoinPackages(); }
-    catch (e) { list.innerHTML = `<div class="portal-empty" style="color:#ff9dab">${esc(e.message)}</div>`; }
+    try {
+      const result = await request("/api/store/admin/coin-packages");
+      coinPackages = result.data || [];
+      renderCoinPackages();
+    } catch (error) { handleAdminError(error, "Không tải được gói Lạc Coin."); }
   }
 
   function renderCoinPackages() {
-    const list = byId("coinPackageList");
-    list.innerHTML = coinPackages.length ? coinPackages.map(p => `
-      <article class="coin-package-row ${p.isActive ? "" : "inactive"}" data-coin-package-row="${p.id}">
-        <div><strong>${esc(p.name)}</strong><small>ID #${p.id}</small></div>
-        <div><span class="coin-package-value">${fmt(p.coinAmount)} LC</span><small>Coin chính</small></div>
-        <div><span class="coin-package-bonus">+${fmt(p.bonusCoin)} LC</span><small>Tổng nhận ${fmt(p.totalCoin)} LC</small></div>
-        <div><span class="coin-package-value">${money(p.priceVnd)}</span><small>Giá bán</small></div>
-        <div><span class="coin-package-state ${p.isActive ? "" : "off"}">${p.isActive ? "Đang bán" : "Đã ẩn"}</span><small>Thứ tự ${p.sortOrder}</small></div>
-        <div class="coin-package-actions"><button class="mini-btn" data-edit-coin-package="${p.id}">Sửa</button><button class="mini-btn ${p.isActive ? "danger" : "primary"}" data-toggle-coin-package="${p.id}">${p.isActive ? "Ẩn" : "Hiện"}</button></div>
-      </article>`).join("") : '<div class="portal-empty">Chưa có gói Lạc Coin.</div>';
+    byId("coinPackageGrid").innerHTML = coinPackages.length ? coinPackages.map(p => `<article class="coin-package-card ${p.isActive ? "" : "inactive"}"><div class="admin-row-top"><div><h3>${esc(p.name)}</h3><div class="admin-meta"><span>ID #${p.id}</span><span>Thứ tự ${p.sortOrder}</span></div></div><span class="admin-chip ${p.isActive ? "published" : "rejected"}">${p.isActive ? "Đang bán" : "Đã ẩn"}</span></div><div class="coin-total">${fmt(p.totalCoin)} LC</div><div class="coin-price">${money(p.priceVnd)}</div>${Number(p.bonusCoin || 0) > 0 ? `<div class="coin-bonus">${fmt(p.coinAmount)} LC + ${fmt(p.bonusCoin)} LC thưởng</div>` : `<div class="coin-bonus">${fmt(p.coinAmount)} LC</div>`}<div class="admin-row-actions"><button class="admin-secondary" type="button" data-edit-package="${p.id}">Sửa</button><button class="${p.isActive ? "admin-danger-btn" : "admin-primary"}" type="button" data-toggle-package="${p.id}">${p.isActive ? "Ẩn gói" : "Mở bán"}</button></div></article>`).join("") : '<div class="admin-empty">Chưa có gói Lạc Coin.</div>';
   }
 
-  function openCoinPackageModal(id = null) {
-    const p = id == null ? null : coinPackages.find(x => Number(x.id) === Number(id));
+  function openCoinPackage(id = null) {
+    const p = id == null ? null : coinPackages.find(item => Number(item.id) === Number(id));
     byId("coinPackageModalTitle").textContent = p ? "Chỉnh sửa gói Lạc Coin" : "Thêm gói Lạc Coin";
     byId("coinPackageId").value = p?.id || "";
     byId("coinPackageName").value = p?.name || "";
@@ -123,58 +352,79 @@
     byId("coinPackageBonus").value = p?.bonusCoin ?? 0;
     byId("coinPackageSort").value = p?.sortOrder ?? (coinPackages.length ? Math.max(...coinPackages.map(x => Number(x.sortOrder || 0))) + 10 : 10);
     byId("coinPackageActive").checked = p?.isActive ?? true;
-    byId("coinPackageModal").hidden = false; document.body.style.overflow = "hidden";
+    byId("coinPackageModal").hidden = false;
   }
-  function closeCoinPackageModal() { byId("coinPackageModal").hidden = true; document.body.style.overflow = ""; }
 
   async function saveCoinPackage(event) {
     event.preventDefault();
     const id = Number(byId("coinPackageId").value || 0);
     const payload = { name:byId("coinPackageName").value.trim(), coinAmount:Number(byId("coinPackageAmount").value), priceVnd:Number(byId("coinPackagePrice").value), bonusCoin:Number(byId("coinPackageBonus").value || 0), isActive:byId("coinPackageActive").checked, sortOrder:Number(byId("coinPackageSort").value || 0) };
-    const btn = event.currentTarget.querySelector('button[type="submit"]'); const old = btn.textContent; btn.disabled = true; btn.textContent = "Đang lưu...";
-    try { const r = await api(id ? `/api/store/admin/coin-packages/${id}` : "/api/store/admin/coin-packages", { method:id ? "PUT" : "POST", body:payload }); status(r.message); closeCoinPackageModal(); await loadCoinPackages(); }
-    catch (e) { status(e.message, true); }
-    finally { btn.disabled = false; btn.textContent = old; }
+    try {
+      const result = await request(id ? `/api/store/admin/coin-packages/${id}` : "/api/store/admin/coin-packages", { method:id ? "PUT" : "POST", body:payload });
+      closeModal("coin");
+      status(result.message || "Đã lưu gói Lạc Coin.");
+      await Promise.all([loadCoinPackages(), loadDashboard()]);
+    } catch (error) { handleAdminError(error, "Không lưu được gói Lạc Coin."); }
   }
 
   async function toggleCoinPackage(id) {
-    try { const r = await api(`/api/store/admin/coin-packages/${id}/toggle`, { method:"POST" }); status(r.message); await loadCoinPackages(); }
-    catch (e) { status(e.message, true); }
+    try {
+      const result = await request(`/api/store/admin/coin-packages/${id}/toggle`, { method:"POST" });
+      status(result.message || "Đã cập nhật trạng thái gói.");
+      await Promise.all([loadCoinPackages(), loadDashboard()]);
+    } catch (error) { handleAdminError(error, "Không đổi được trạng thái gói."); }
   }
 
-  function switchTab(tab) {
-    activeTab = tab;
-    document.querySelectorAll("[data-admin-tab]").forEach(b => b.classList.toggle("active", b.dataset.adminTab === tab));
-    byId("adminGamesPanel").hidden = !["pending", "all"].includes(tab);
-    byId("adminUsersPanel").hidden = tab !== "users";
-    byId("adminCoinPackagesPanel").hidden = tab !== "coin-packages";
-    status("");
-    if (tab === "users") loadUsers();
-    else if (tab === "coin-packages") loadCoinPackages();
-    else loadGames(tab === "pending");
+  async function loadTransactions() {
+    try {
+      const result = await request("/api/store/admin/transactions?limit=200");
+      transactions = result.data || [];
+      byId("transactionTable").innerHTML = transactions.length ? transactions.map(t => `<tr><td>${when(t.createdAt)}</td><td><b>${esc(t.accountName || "")}</b><br><small style="color:#7f8da7">${esc(t.email || "")}</small></td><td>${esc(t.type || "")}</td><td><b>${Number(t.coinAmount || 0) >= 0 ? "+" : ""}${fmt(t.coinAmount)} LC</b></td><td>${Number(t.moneyAmount || 0) ? money(t.moneyAmount) : "—"}</td><td><span class="admin-chip ${String(t.status || "").toLowerCase()}">${esc(t.status || "")}</span></td><td>${esc(t.referenceCode || "—")}</td></tr>`).join("") : '<tr><td colspan="7"><div class="admin-empty">Chưa có giao dịch.</div></td></tr>';
+    } catch (error) { handleAdminError(error, "Không tải được giao dịch."); }
   }
+
+  function closeModal(type) {
+    if (type === "game") byId("gameEditModal").hidden = true;
+    if (type === "coin") byId("coinPackageModal").hidden = true;
+  }
+
+  function handleAdminError(error, fallback, target = null) {
+    if (error.status === 401 || error.status === 403) {
+      if (error.status === 401) clearSession();
+      return showGate(error.status === 403 ? "Tài khoản hiện tại không có quyền Admin." : "Phiên Admin đã hết hạn. Vui lòng đăng nhập lại.");
+    }
+    const message = error.message || fallback;
+    status(message, true);
+    if (target) target.innerHTML = `<div class="admin-empty" style="color:#ff9bad">${esc(message)}</div>`;
+  }
+
+  byId("adminLoginForm").addEventListener("submit", loginAdmin);
+  byId("adminLogout").addEventListener("click", logoutAdmin);
+  byId("refreshDashboard").addEventListener("click", loadDashboard);
+  byId("refreshPending").addEventListener("click", () => loadGames(true));
+  byId("refreshGames").addEventListener("click", () => loadGames(false));
+  byId("refreshUsers").addEventListener("click", loadUsers);
+  byId("refreshCoinPackages").addEventListener("click", loadCoinPackages);
+  byId("refreshTransactions").addEventListener("click", loadTransactions);
+  byId("addCoinPackage").addEventListener("click", () => openCoinPackage());
+  byId("userSearch").addEventListener("input", renderUsers);
+  byId("gameEditForm").addEventListener("submit", saveGame);
+  byId("coinPackageForm").addEventListener("submit", saveCoinPackage);
 
   document.addEventListener("click", event => {
-    const tab = event.target.closest("[data-admin-tab]"); if (tab) return switchTab(tab.dataset.adminTab);
-    const approveId = event.target.closest("[data-approve]")?.dataset.approve; if (approveId) return approve(approveId);
-    const rejectId = event.target.closest("[data-reject]")?.dataset.reject; if (rejectId) return reject(rejectId);
-    const editGameId = event.target.closest("[data-edit-game]")?.dataset.editGame; if (editGameId) return openEdit(editGameId);
-    const saveId = event.target.closest("[data-save-user]")?.dataset.saveUser; if (saveId) return saveUser(saveId);
-    const coinId = event.target.closest("[data-adjust-coin]")?.dataset.adjustCoin; if (coinId) return adjustCoin(coinId);
-    const editPackageId = event.target.closest("[data-edit-coin-package]")?.dataset.editCoinPackage; if (editPackageId) return openCoinPackageModal(editPackageId);
-    const togglePackageId = event.target.closest("[data-toggle-coin-package]")?.dataset.toggleCoinPackage; if (togglePackageId) return toggleCoinPackage(togglePackageId);
+    const nav = event.target.closest("[data-admin-section]"); if (nav) return switchSection(nav.dataset.adminSection);
+    const jump = event.target.closest("[data-jump]"); if (jump) return switchSection(jump.dataset.jump);
+    const approve = event.target.closest("[data-approve]"); if (approve) return approveGame(approve.dataset.approve);
+    const reject = event.target.closest("[data-reject]"); if (reject) return rejectGame(reject.dataset.reject);
+    const editGame = event.target.closest("[data-edit-game]"); if (editGame) return openGameEdit(editGame.dataset.editGame);
+    const saveUserButton = event.target.closest("[data-save-user]"); if (saveUserButton) return saveUser(saveUserButton.dataset.saveUser);
+    const adjustCoinButton = event.target.closest("[data-adjust-coin]"); if (adjustCoinButton) return adjustCoin(adjustCoinButton.dataset.adjustCoin);
+    const editPackage = event.target.closest("[data-edit-package]"); if (editPackage) return openCoinPackage(editPackage.dataset.editPackage);
+    const togglePackage = event.target.closest("[data-toggle-package]"); if (togglePackage) return toggleCoinPackage(togglePackage.dataset.togglePackage);
+    const close = event.target.closest("[data-close-modal]"); if (close) return closeModal(close.dataset.closeModal);
+    if (event.target === byId("gameEditModal")) closeModal("game");
+    if (event.target === byId("coinPackageModal")) closeModal("coin");
   });
 
-  byId("refreshAdmin")?.addEventListener("click", () => loadGames(activeTab === "pending"));
-  byId("userSearch")?.addEventListener("input", renderUsers);
-  byId("closeAdminEdit")?.addEventListener("click", closeEdit);
-  byId("adminGameForm")?.addEventListener("submit", saveEdit);
-  byId("adminEditModal")?.addEventListener("click", e => { if (e.target === byId("adminEditModal")) closeEdit(); });
-  byId("refreshCoinPackages")?.addEventListener("click", loadCoinPackages);
-  byId("addCoinPackage")?.addEventListener("click", () => openCoinPackageModal());
-  byId("closeCoinPackageModal")?.addEventListener("click", closeCoinPackageModal);
-  byId("coinPackageForm")?.addEventListener("submit", saveCoinPackage);
-  byId("coinPackageModal")?.addEventListener("click", e => { if (e.target === byId("coinPackageModal")) closeCoinPackageModal(); });
-
-  setTimeout(boot, 0);
+  boot();
 })();
