@@ -3,10 +3,12 @@
 
   const API = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
   const gameSlug = new URLSearchParams(location.search).get("id") || "";
+  const LEASE_EXPIRE_MS = 5 * 60 * 1000;
   let playSession = null;
   let checkpointTimer = null;
   let ending = false;
   let starting = false;
+  let lastLeaseAt = 0;
 
   function readSession() {
     if (window.LVGSession?.read) return window.LVGSession.read();
@@ -31,6 +33,7 @@
       if (!response.ok || !payload?.data?.sessionId || !payload?.data?.clientToken) return;
       playSession = payload.data;
       ending = false;
+      lastLeaseAt = Date.now();
       window.LVGPlaySession = playSession;
       scheduleCheckpoint(Number(playSession.checkpointSeconds || 120));
       window.dispatchEvent(new CustomEvent("lvg:play-session-started", { detail: playSession }));
@@ -45,14 +48,29 @@
     checkpointTimer = setInterval(checkpoint, interval);
   }
 
+  async function restartExpiredLease() {
+    if (!playSession) return startSession();
+    if (Date.now() - lastLeaseAt <= LEASE_EXPIRE_MS) return false;
+    clearInterval(checkpointTimer);
+    playSession = null;
+    window.LVGPlaySession = null;
+    await startSession();
+    return true;
+  }
+
   async function checkpoint() {
     if (!playSession || ending || document.hidden) return;
+    if (await restartExpiredLease()) return;
     try {
       const response = await fetch(`${API}/api/store/play-sessions/checkpoint`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: playSession.sessionId, clientToken: playSession.clientToken })
       });
+      if (response.ok) {
+        lastLeaseAt = Date.now();
+        return;
+      }
       if (response.status === 404 || response.status === 410) {
         playSession = null;
         window.LVGPlaySession = null;
@@ -106,7 +124,11 @@
   window.addEventListener("pagehide", () => endSession({ beacon: true }));
   window.addEventListener("beforeunload", () => endSession({ beacon: true }));
   window.addEventListener("lvg:session-hydrated", startSession);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && !playSession) startSession(); });
+  document.addEventListener("visibilitychange", async () => {
+    if (document.hidden) return;
+    if (!playSession) await startSession();
+    else await restartExpiredLease();
+  });
 
   startSession();
 })();
