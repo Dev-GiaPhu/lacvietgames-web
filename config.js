@@ -7,14 +7,12 @@ serverWalletGuardStyle.textContent = `
   .header-actions > .coin-pill { display: none !important; }
   body.server-authenticated .header-actions > .coin-pill { display: flex !important; }
 
-  /* Auth modal: chỉ hiển thị đúng một bước/form tại một thời điểm. */
   .server-auth-form[hidden],
   #serverAuthMain[hidden],
   #serverVerifyForm[hidden] {
     display: none !important;
   }
 
-  /* Không để form đăng ký dài tràn khỏi màn hình. */
   .server-auth-modal {
     overflow-y: auto !important;
     overscroll-behavior: contain;
@@ -32,30 +30,34 @@ serverWalletGuardStyle.textContent = `
       padding-top: 12px !important;
       padding-bottom: 12px !important;
     }
-
-    .server-auth-card {
-      max-height: calc(100dvh - 24px) !important;
-    }
+    .server-auth-card { max-height: calc(100dvh - 24px) !important; }
   }
 `;
 document.head.appendChild(serverWalletGuardStyle);
 
+const version = "20260807-2055";
+
 const registrationFlowScript = document.createElement("script");
-registrationFlowScript.src = "./registration-flow.js?v=20260807-1850";
+registrationFlowScript.src = `./registration-flow.js?v=${version}`;
 registrationFlowScript.defer = true;
 document.head.appendChild(registrationFlowScript);
 
 const storeSessionScript = document.createElement("script");
-storeSessionScript.src = "./store-session.js?v=20260807-1850";
+storeSessionScript.src = `./store-session.js?v=${version}`;
 storeSessionScript.defer = true;
 document.head.appendChild(storeSessionScript);
 
+const accountEnhancementsScript = document.createElement("script");
+accountEnhancementsScript.src = `./account-enhancements.js?v=${version}`;
+accountEnhancementsScript.defer = true;
+document.head.appendChild(accountEnhancementsScript);
+
 const footerLinksScript = document.createElement("script");
-footerLinksScript.src = "./footer-links.js?v=20260807-1850";
+footerLinksScript.src = `./footer-links.js?v=${version}`;
 footerLinksScript.defer = true;
 document.head.appendChild(footerLinksScript);
 
 const protectedPagesScript = document.createElement("script");
-protectedPagesScript.src = "./protected-pages.js?v=20260807-1850";
+protectedPagesScript.src = `./protected-pages.js?v=${version}`;
 protectedPagesScript.defer = true;
 document.head.appendChild(protectedPagesScript);
