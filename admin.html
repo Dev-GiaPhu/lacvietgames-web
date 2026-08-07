@@ -11,6 +11,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./store.css">
   <link rel="stylesheet" href="./portal.css">
+  <style>
+    .coin-package-list{display:grid;gap:12px}.coin-package-row{display:grid;grid-template-columns:minmax(180px,1.3fr) repeat(4,minmax(100px,.7fr)) auto;gap:14px;align-items:center;padding:16px;border:1px solid #283247;border-radius:16px;background:#101620}.coin-package-row.inactive{opacity:.62}.coin-package-row small{display:block;color:#7f8da7;margin-top:4px}.coin-package-value{font-weight:800}.coin-package-bonus{color:#75dda0}.coin-package-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.coin-package-state{display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border-radius:999px;font-size:12px;font-weight:800;background:#163326;color:#79e0a3}.coin-package-state.off{background:#352028;color:#ff9baa}@media(max-width:1050px){.coin-package-row{grid-template-columns:1fr 1fr 1fr}.coin-package-actions{justify-content:flex-start}}@media(max-width:650px){.coin-package-row{grid-template-columns:1fr}}
+  </style>
 </head>
 <body class="portal-page" data-page="admin">
   <header class="site-header">
@@ -22,7 +25,7 @@
   </header>
 
   <main class="portal-shell">
-    <div class="portal-head"><div><span class="eyebrow">Administration</span><h1>LacVietGames Admin Center</h1><p>Duyệt game do người dùng gửi, chỉnh metadata catalog, quản lý tài khoản và điều chỉnh Lạc Coin. Tất cả thao tác quan trọng đi qua API server.</p></div><a class="btn btn-secondary" href="./index.html">← Cửa hàng</a></div>
+    <div class="portal-head"><div><span class="eyebrow">Administration</span><h1>LacVietGames Admin Center</h1><p>Duyệt game, quản lý người dùng và cấu hình gói Lạc Coin trực tiếp từ dữ liệu server.</p></div><a class="btn btn-secondary" href="./index.html">← Cửa hàng</a></div>
 
     <section id="adminDenied" class="portal-card" hidden><h2>Không có quyền truy cập</h2><p id="adminDeniedText">Trang này chỉ dành cho Admin.</p><button class="btn btn-primary" type="button" data-open-server-auth>Đăng nhập tài khoản Admin</button></section>
 
@@ -31,10 +34,18 @@
         <button class="active" data-admin-tab="pending">Game chờ duyệt</button>
         <button data-admin-tab="all">Tất cả game</button>
         <button data-admin-tab="users">Người dùng</button>
+        <button data-admin-tab="coin-packages">Gói Lạc Coin</button>
       </div>
       <div id="adminStatus" class="portal-status"></div>
       <section id="adminGamesPanel" class="portal-card"><div class="portal-toolbar"><div><h2 style="margin:0">Danh sách game</h2><small style="color:#8492ab">Duyệt, từ chối hoặc chỉnh sửa trước khi xuất bản</small></div><button id="refreshAdmin" class="mini-btn" type="button">Làm mới</button></div><div id="adminGameList" class="admin-list"></div></section>
       <section id="adminUsersPanel" class="portal-card" hidden><div class="portal-toolbar"><div><h2 style="margin:0">Người dùng</h2><small style="color:#8492ab">Sửa tên, quyền và điều chỉnh coin có lịch sử</small></div><input id="userSearch" type="search" placeholder="Tìm email / tên"></div><div id="adminUserList" class="admin-list"></div></section>
+      <section id="adminCoinPackagesPanel" class="portal-card" hidden>
+        <div class="portal-toolbar">
+          <div><h2 style="margin:0">Gói Lạc Coin</h2><small style="color:#8492ab">Giá và số coin ở đây được dùng trực tiếp khi tạo thanh toán payOS.</small></div>
+          <div class="admin-actions" style="margin:0"><button id="refreshCoinPackages" class="mini-btn" type="button">Làm mới</button><button id="addCoinPackage" class="mini-btn primary" type="button">+ Thêm gói mới</button></div>
+        </div>
+        <div id="coinPackageList" class="coin-package-list"></div>
+      </section>
     </section>
   </main>
 
@@ -59,7 +70,23 @@
     </section>
   </div>
 
-  <script src="./config.js?v=20260807-2310-stable"></script>
-  <script src="./admin.js"></script>
+  <div id="coinPackageModal" class="server-auth-modal" hidden>
+    <section class="server-auth-card" style="width:min(620px,100%);max-height:90vh;overflow:auto">
+      <button id="closeCoinPackageModal" class="server-auth-close" type="button">×</button>
+      <h2 id="coinPackageModalTitle">Thêm gói Lạc Coin</h2>
+      <form id="coinPackageForm" class="portal-form">
+        <input id="coinPackageId" type="hidden">
+        <label>Tên gói<input id="coinPackageName" maxlength="120" placeholder="Ví dụ: Gói khởi đầu" required></label>
+        <div class="two"><label>Số Lạc Coin<input id="coinPackageAmount" type="number" min="1" step="1" required></label><label>Giá bán (VNĐ)<input id="coinPackagePrice" type="number" min="1" step="1" required></label></div>
+        <div class="two"><label>Coin thưởng<input id="coinPackageBonus" type="number" min="0" step="1" value="0"></label><label>Thứ tự hiển thị<input id="coinPackageSort" type="number" min="0" step="1" value="0"></label></div>
+        <label class="auth-check" style="display:flex;gap:10px;align-items:center"><input id="coinPackageActive" type="checkbox" checked style="width:auto"><span>Đang mở bán</span></label>
+        <div class="portal-note">Khi người dùng tạo đơn, backend sẽ chụp lại giá và tổng coin của gói tại thời điểm đó. Sửa giá sau này không làm thay đổi các đơn đã tạo.</div>
+        <button class="btn btn-primary" type="submit">Lưu gói Lạc Coin</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="./config.js?v=20260807-2355-coinpackages"></script>
+  <script src="./admin.js?v=20260807-2355-coinpackages"></script>
 </body>
 </html>
