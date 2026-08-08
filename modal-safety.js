@@ -16,16 +16,67 @@
       }
       .server-auth-close:hover{background:#2a0d13!important;color:#fff0c9!important;border-color:rgba(233,193,95,.42)!important}
       .lvg-campaign-card .server-auth-close{top:12px!important;right:12px!important;background:rgba(20,9,12,.92)!important;backdrop-filter:blur(10px)}
-      @media(max-width:600px){
-        .server-auth-modal{padding:10px!important}
-        .server-auth-modal > .server-auth-card:not(.lvg-campaign-card){padding-top:54px!important}
-        .server-auth-close{top:10px!important;right:10px!important;width:38px!important;height:38px!important}
-      }
+      @media(max-width:600px){.server-auth-modal{padding:10px!important}.server-auth-modal > .server-auth-card:not(.lvg-campaign-card){padding-top:54px!important}.server-auth-close{top:10px!important;right:10px!important;width:38px!important;height:38px!important}}
     `;
     document.head.appendChild(style);
   }
 
-  // Backdrop is not an implicit close action. Only explicit buttons/keyboard handling close a modal.
+  if (document.body?.classList.contains("admin-page") && !window.__LVG_ADMIN_SECURE_BRIDGE__) {
+    window.__LVG_ADMIN_SECURE_BRIDGE__ = true;
+    const API = (window.APP_CONFIG?.API_BASE_URL || "https://lacvietgames-api-production.up.railway.app").replace(/\/$/, "");
+    const COOKIE_SENTINEL = "cookie.session";
+    const KEY = "lacvietgamesStoreSession";
+
+    const theme = document.createElement("link");
+    theme.rel = "stylesheet";
+    theme.href = "./admin-red-gold.css?v=20260809-0345";
+    theme.dataset.lvgAdminRuntimeTheme = "1";
+    document.head.appendChild(theme);
+    const icon = document.querySelector('link[rel="icon"]');
+    if (icon) icon.href = "./favicon.svg?v=20260809-0345";
+
+    const nativeFetch = window.fetch.bind(window);
+    const readSession = () => { try { const raw=sessionStorage.getItem(KEY); return raw?JSON.parse(raw):null; } catch { return null; } };
+    async function cookieWorks() {
+      try { return (await nativeFetch(`${API}/api/store/me`, { credentials:"include", cache:"no-store", headers:{Accept:"application/json"} })).ok; } catch { return false; }
+    }
+    window.fetch = async function(input, init) {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (!url.startsWith(API)) return nativeFetch(input, init);
+      const next = { ...(init||{}), credentials:"include", cache:"no-store" };
+      try {
+        const headers = new Headers(next.headers || {});
+        if (headers.get("Authorization") === `Bearer ${COOKIE_SENTINEL}`) headers.delete("Authorization");
+        next.headers = headers;
+      } catch {}
+      let response = await nativeFetch(input, next);
+      if (url.includes("/api/store/auth/login") && response.ok) {
+        const payload = await response.clone().json().catch(()=>null);
+        if (payload?.data?.token && await cookieWorks()) {
+          payload.data.token = COOKIE_SENTINEL;
+          payload.data.sessionMode = "secure-cookie";
+          const headers = new Headers(response.headers);
+          headers.set("Content-Type","application/json; charset=utf-8");
+          headers.set("Cache-Control","no-store");
+          response = new Response(JSON.stringify(payload), {status:response.status,statusText:response.statusText,headers});
+        }
+      }
+      return response;
+    };
+
+    try {
+      const old = localStorage.getItem(KEY);
+      if (old && !sessionStorage.getItem(KEY)) sessionStorage.setItem(KEY, old);
+      localStorage.removeItem(KEY);
+      localStorage.removeItem("lacvietgamesSession");
+    } catch {}
+
+    window.addEventListener("beforeunload", () => {
+      const s=readSession();
+      if (s?.token === COOKIE_SENTINEL) return;
+    });
+  }
+
   window.addEventListener("click", event => {
     const target = event.target;
     if (!(target instanceof Element)) return;
