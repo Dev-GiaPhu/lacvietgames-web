@@ -3,9 +3,35 @@
   const $=id=>document.getElementById(id);
   const fmtBytes=n=>{n=Number(n||0);if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;if(n<1073741824)return`${(n/1048576).toFixed(1)} MB`;return`${(n/1073741824).toFixed(2)} GB`};
   const states={main:{source:null,sdk:false},version:{source:null,sdk:false}};
+  let storageReady=false;
 
   function session(){if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[localStorage,sessionStorage]){try{const raw=s.getItem("lacvietgamesStoreSession");if(raw)return JSON.parse(raw)}catch{}}return null}
   async function api(path,opt={}){const s=session();if(!s?.token)throw new Error("Bạn cần đăng nhập Publisher Center.");const r=await fetch(`${API}${path}`,{method:opt.method||"GET",headers:{"Content-Type":"application/json",Authorization:`Bearer ${s.token}`},body:opt.body?JSON.stringify(opt.body):undefined});const p=await r.json().catch(()=>null);if(!r.ok||p?.success===false)throw new Error(p?.message||"Không thể xử lý WebGL build.");return p}
+
+  async function checkStorageStatus(){
+    const el=$("webglStorageStatus");
+    if(!el)return false;
+    if(!session()?.token){storageReady=false;el.textContent="Đăng nhập để hệ thống kiểm tra kho lưu trữ WebGL.";el.dataset.state="pending";return false}
+    el.textContent="Đang kiểm tra R2...";el.dataset.state="pending";
+    try{
+      const p=await api("/api/store/webgl-uploads/status");const d=p.data||{};
+      storageReady=!!(d.configured&&d.publicConfigured&&d.credentialsReachable&&d.publicReachable);
+      if(storageReady){
+        el.textContent=`✓ Kho WebGL sẵn sàng · R2 API OK · Public URL OK${d.bucket?` · ${d.bucket}`:""}.`;
+        el.dataset.state="ready";
+      }else{
+        const missing=[];
+        if(!d.configured)missing.push("thiếu biến R2 trên Railway");
+        else if(!d.credentialsReachable)missing.push("R2 API key/Account ID/bucket chưa hợp lệ");
+        if(!d.publicConfigured)missing.push("thiếu PublicBaseUrl");
+        else if(!d.publicReachable)missing.push("Public Access chưa hoạt động");
+        el.textContent=`⚠ Kho WebGL chưa sẵn sàng: ${missing.join("; ")||d.diagnostic||"kiểm tra cấu hình R2"}.`;
+        el.dataset.state="error";
+      }
+      return storageReady;
+    }catch(e){storageReady=false;el.textContent=`⚠ Không kiểm tra được R2: ${e.message}`;el.dataset.state="error";return false}
+  }
+
   function cleanPath(v){const p=String(v||"").replace(/\\/g,"/").replace(/^\/+/,"").split("/").filter(Boolean);if(!p.length||p.some(x=>x==="."||x===".."||x.includes(":")))return null;return p.join("/")}
   function stripRoot(items){
     const valid=items.filter(x=>x.path&&!x.path.startsWith("__MACOSX/")&&!x.path.endsWith("/"));
@@ -64,12 +90,13 @@
   function showSource(kind,source){const info=$(kind==="main"?"webglBuildInfo":"versionWebglInfo");if(info)info.innerHTML=`<b>${source.name}</b><span>${source.entries.length} file · ${fmtBytes(source.total)}</span><span>✓ index.html · ✓ Build/ · đang chờ upload</span>`;setInfo(kind,"Build hợp lệ. Bấm Upload WebGL để đưa trực tiếp lên kho game.");setProgress(kind,0)}
 
   async function inspectSdk(path,blob,kind){if(states[kind].sdk||!/\.js(\.(br|gz))?$/i.test(path)||blob.size>15*1024*1024||/\.(br|gz)$/i.test(path))return;try{const text=await blob.text();if(text.includes("LVG_GAMEPLAY_START")||text.includes("LVG_GameplayStart")||text.includes("LVG_GameplayEnd"))states[kind].sdk=true}catch{}}
-  function xhrPut(ticket,blob,onProgress){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open("PUT",ticket.uploadUrl,true);x.setRequestHeader("Content-Type",ticket.contentType||"application/octet-stream");if(ticket.contentEncoding)x.setRequestHeader("Content-Encoding",ticket.contentEncoding);if(ticket.cacheControl)x.setRequestHeader("Cache-Control",ticket.cacheControl);x.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded)};x.onerror=()=>reject(new Error("Không kết nối được R2. Kiểm tra CORS bucket."));x.onload=()=>x.status>=200&&x.status<300?resolve():reject(new Error(`R2 từ chối upload (${x.status}). Kiểm tra CORS bucket.`));x.send(blob)})}
+  function xhrPut(ticket,blob,onProgress){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open("PUT",ticket.uploadUrl,true);x.setRequestHeader("Content-Type",ticket.contentType||"application/octet-stream");if(ticket.contentEncoding)x.setRequestHeader("Content-Encoding",ticket.contentEncoding);if(ticket.cacheControl)x.setRequestHeader("Cache-Control",ticket.cacheControl);x.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded)};x.onerror=()=>reject(new Error("Không kết nối được R2 từ trình duyệt. Hãy kiểm tra CORS của bucket cho https://dev-giaphu.github.io."));x.onload=()=>x.status>=200&&x.status<300?resolve():reject(new Error(`R2 từ chối upload (${x.status}). Kiểm tra CORS và quyền Object Read & Write của token.`));x.send(blob)})}
 
   async function upload(kind){
     const state=states[kind],source=state.source;if(!source)return setInfo(kind,"Hãy chọn WebGL ZIP hoặc thư mục build trước.",true);
-    const button=$(kind==="main"?"uploadWebglBuild":"uploadVersionWebglBuild");const old=button.textContent;button.disabled=true;button.textContent="Đang chuẩn bị...";state.sdk=false;
+    const button=$(kind==="main"?"uploadWebglBuild":"uploadVersionWebglBuild");const old=button.textContent;button.disabled=true;button.textContent="Đang kiểm tra kho...";state.sdk=false;
     try{
+      if(!await checkStorageStatus())throw new Error("Kho WebGL chưa sẵn sàng. Xem trạng thái R2 phía trên trước khi upload.");
       const version=kind==="main"?$("versionName")?.value:$("newVersionName")?.value;
       const prep=await api("/api/store/webgl-uploads/prepare",{method:"POST",body:{version:version||"1.0.0",files:source.entries.map(e=>({path:e.path,size:e.size}))}});const d=prep.data||{};const tickets=d.files||[];const ticketByPath=new Map(tickets.map(t=>[t.path,t]));let done=0;const total=Math.max(1,source.total);
       button.textContent="Đang upload...";
@@ -93,6 +120,8 @@
     $("versionWebglZip")?.addEventListener("change",e=>{const f=e.target.files?.[0];if(f)chooseZip("version",f)});$("uploadVersionWebglBuild")?.addEventListener("click",()=>upload("version"));
     const zone=$("webglDropZone");if(zone){["dragenter","dragover"].forEach(type=>zone.addEventListener(type,e=>{e.preventDefault();zone.classList.add("dragging")}));["dragleave","drop"].forEach(type=>zone.addEventListener(type,e=>{e.preventDefault();zone.classList.remove("dragging")}));zone.addEventListener("drop",e=>{const f=[...e.dataTransfer.files].find(x=>/\.zip$/i.test(x.name));if(f)chooseZip("main",f);else setInfo("main","Hãy thả file .zip. Với thư mục, dùng nút Chọn thư mục build.",true)})}
     $("gameSubmissionForm")?.addEventListener("reset",()=>setTimeout(clearMain,0));
+    checkStorageStatus();
+    window.addEventListener("lvg:session-hydrated",checkStorageStatus);
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",install,{once:true});else install();
 })();
