@@ -20,13 +20,28 @@
         el.textContent=`✓ Kho WebGL sẵn sàng · R2 API OK · Public URL OK${d.bucket?` · ${d.bucket}`:""}.`;
         el.dataset.state="ready";
       }else{
-        const missing=[];
-        if(!d.configured)missing.push("thiếu biến R2 trên Railway");
-        else if(!d.credentialsReachable)missing.push("R2 API key/Account ID/bucket chưa hợp lệ");
-        if(!d.publicConfigured)missing.push("thiếu PublicBaseUrl");
-        else if(!d.publicReachable)missing.push("Public Access chưa hoạt động");
-        el.textContent=`⚠ Kho WebGL chưa sẵn sàng: ${missing.join("; ")||d.diagnostic||"kiểm tra cấu hình R2"}.`;
+        let detail=d.diagnostic||"";
+        if(!detail){
+          const missing=[];
+          if(!d.configured)missing.push("Railway chưa nhận đủ biến R2");
+          else if(!d.credentialsReachable)missing.push("R2 credentials chưa được Cloudflare chấp nhận");
+          if(!d.publicConfigured)missing.push("thiếu PublicBaseUrl");
+          else if(!d.publicReachable)missing.push("Public Access chưa hoạt động");
+          detail=missing.join("; ")||"kiểm tra cấu hình R2";
+        }
+        const hints=[];
+        if(d.accountIdHint)hints.push(`Account ${d.accountIdHint}`);
+        if(d.accessKeyHint)hints.push(`Access ${d.accessKeyHint}`);
+        if(d.bucket)hints.push(`Bucket ${d.bucket}`);
+        if(d.r2Code)hints.push(`R2 ${d.r2Code}`);
+        el.textContent=`⚠ Kho WebGL chưa sẵn sàng: ${detail}${hints.length?` · ${hints.join(" · ")}`:""}`;
         el.dataset.state="error";
+        if(d.configured&&!d.credentialsReachable){
+          try{
+            const q=await api("/api/store/webgl-uploads/diagnose"),x=q.data||{};
+            if(x.message){el.textContent=`⚠ ${x.message}${x.accountIdHint?` · Account ${x.accountIdHint}`:""}${x.accessKeyHint?` · Access ${x.accessKeyHint}`:""}${x.bucket?` · Bucket ${x.bucket}`:""}`;}
+          }catch{}
+        }
       }
       return storageReady;
     }catch(e){storageReady=false;el.textContent=`⚠ Không kiểm tra được R2: ${e.message}`;el.dataset.state="error";return false}
