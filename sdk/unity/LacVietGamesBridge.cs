@@ -6,16 +6,20 @@ using UnityEngine;
 /// <summary>
 /// LacVietGames SDK for Unity WebGL.
 /// SECURITY:
-/// - Unity never receives the LacVietGames account bearer token.
+/// - Integration ID is PUBLIC identification, not a secret.
+/// - Unity never receives the LacVietGames account bearer token or play-session secret.
 /// - Unity never sends a Lạc Coin amount.
-/// - ClaimReward(eventKey) is only for ServerTime/ClientCapped rules; the server decides money and limits.
-/// - High-value ServerVerified rewards CANNOT be claimed by this client method.
-/// - RequestGameIdentityToken returns only a short-lived game/session-scoped identity token for sending to YOUR trusted game backend.
-/// - NEVER put a Game Server Key inside Unity/WebGL. Only your backend may hold that key.
+/// - Admin controls which capabilities this Integration ID may use.
+/// - High-value ServerVerified rewards cannot be claimed by ClaimReward().
+/// - NEVER put a Game Server Key inside Unity/WebGL.
 /// </summary>
 public sealed class LacVietGamesBridge : MonoBehaviour
 {
     public static LacVietGamesBridge Instance { get; private set; }
+
+    [Header("LacVietGames Integration")]
+    [Tooltip("Public Integration ID supplied by LacVietGames after Admin approval. Example: lvg_int_...")]
+    [SerializeField] private string integrationId = "";
 
     [Header("Gameplay")]
     [SerializeField] private bool autoStartGameplay;
@@ -27,7 +31,7 @@ public sealed class LacVietGamesBridge : MonoBehaviour
     [SerializeField] private long editorCoinBalance = 1000;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-    [DllImport("__Internal")] private static extern void LVG_InitBridge();
+    [DllImport("__Internal")] private static extern void LVG_InitBridge(string integrationId);
     [DllImport("__Internal")] private static extern IntPtr LVG_PollMessage();
     [DllImport("__Internal")] private static extern void LVG_FreeMessage(IntPtr ptr);
     [DllImport("__Internal")] private static extern void LVG_RequestAuth(string requestId);
@@ -39,7 +43,9 @@ public sealed class LacVietGamesBridge : MonoBehaviour
     [DllImport("__Internal")] private static extern void LVG_ReturnToStore();
 #endif
 
+    public string IntegrationId => integrationId;
     public bool IsLoggedIn { get; private set; }
+    public bool HostApproved { get; private set; }
     public int AccountId { get; private set; }
     public string DisplayName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
@@ -87,17 +93,25 @@ public sealed class LacVietGamesBridge : MonoBehaviour
 
     private void Init()
     {
-        if (bridgeInitialized) return; bridgeInitialized = true;
+        if (bridgeInitialized) return;
+        integrationId = (integrationId ?? string.Empty).Trim();
 #if UNITY_WEBGL && !UNITY_EDITOR
-        LVG_InitBridge();
+        if (string.IsNullOrWhiteSpace(integrationId))
+        {
+            RaiseError("INTEGRATION_ID_REQUIRED", "Thiếu LacVietGames Integration ID. Publisher cần dùng ID đã được Admin duyệt.");
+            return;
+        }
+        bridgeInitialized = true;
+        LVG_InitBridge(integrationId);
 #else
-        Debug.Log("[LacVietGames] SDK initialized in Editor simulation.");
+        bridgeInitialized = true;
+        Debug.Log("[LacVietGames] SDK initialized in Editor simulation. Integration ID is not a secret.");
 #endif
     }
 
     public void RequestLogin()
     {
-        Init();
+        Init(); if (!bridgeInitialized) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
         LVG_RequestAuth(NewId());
 #else
@@ -108,7 +122,7 @@ public sealed class LacVietGamesBridge : MonoBehaviour
 
     public void RefreshWallet()
     {
-        Init();
+        Init(); if (!bridgeInitialized) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
         LVG_RequestWallet(NewId());
 #else
@@ -118,14 +132,12 @@ public sealed class LacVietGamesBridge : MonoBehaviour
     }
 
     /// <summary>
-    /// Requests a short-lived identity token scoped to this account + game + current play session.
-    /// Send the returned token to YOUR trusted game backend over HTTPS. Your backend validates the real match/result,
-    /// then calls LacVietGames ServerVerified API using a Game Server Key stored only in backend secrets.
-    /// This token is user-visible by design and is NOT permission to mint coins by itself.
+    /// Gets a short-lived identity token only when Admin approved ServerVerified for this integration.
+    /// The token itself cannot mint coins and contains no Game Server Key.
     /// </summary>
     public void RequestGameIdentityToken()
     {
-        Init();
+        Init(); if (!bridgeInitialized) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
         LVG_RequestIdentity(NewId());
 #else
@@ -133,15 +145,12 @@ public sealed class LacVietGamesBridge : MonoBehaviour
 #endif
     }
 
-    /// <summary>
-    /// Client reward request. Use only for rules configured as ClientCapped. PlayTime is automatic.
-    /// A ServerVerified rule is deliberately unreachable from this function.
-    /// </summary>
+    /// <summary>Client-side request for Admin-approved ClientCapped rules only. Coin amount always comes from the server.</summary>
     public void ClaimReward(string eventKey)
     {
         eventKey = NormalizeEventKey(eventKey);
         if (string.IsNullOrEmpty(eventKey)) { RaiseError("INVALID_EVENT_KEY", "eventKey chỉ được dùng a-z, 0-9, '.', '_' và '-'."); return; }
-        Init();
+        Init(); if (!bridgeInitialized) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
         LVG_ClaimReward(eventKey, NewId());
 #else
@@ -151,7 +160,7 @@ public sealed class LacVietGamesBridge : MonoBehaviour
 
     public void GameplayStarted()
     {
-        if (gameplayActive) return; gameplayActive = true;
+        Init(); if (!bridgeInitialized || gameplayActive) return; gameplayActive = true;
 #if UNITY_WEBGL && !UNITY_EDITOR
         LVG_GameplayStart();
 #else
@@ -188,19 +197,20 @@ public sealed class LacVietGamesBridge : MonoBehaviour
 
         switch (m.type)
         {
-            case "LVG_HOST_READY": return;
+            case "LVG_HOST_READY":
+                HostApproved = m.approved;
+                if (!m.approved) RaiseError(string.IsNullOrWhiteSpace(m.code) ? "INTEGRATION_NOT_APPROVED" : m.code, string.IsNullOrWhiteSpace(m.message) ? "Integration ID chưa được Admin duyệt cho game này." : m.message);
+                return;
             case "LVG_AUTH_RESULT":
                 if (!m.success) { RaiseError(m.code, m.message); return; }
-                ApplyAccount(new LvgAccount { accountId = m.accountId, displayName = m.displayName ?? "", email = m.email ?? "", coinBalance = m.coinBalance });
-                return;
+                ApplyAccount(new LvgAccount { accountId = m.accountId, displayName = m.displayName ?? "", email = m.email ?? "", coinBalance = m.coinBalance }); return;
             case "LVG_WALLET_RESULT":
                 if (!m.success) { RaiseError(m.code, m.message); return; }
                 if (m.accountId > 0) { AccountId = m.accountId; DisplayName = m.displayName ?? DisplayName; Email = m.email ?? Email; IsLoggedIn = true; }
                 CoinBalance = m.coinBalance; WalletUpdated?.Invoke(CoinBalance); return;
             case "LVG_IDENTITY_RESULT":
                 if (!m.success) { RaiseError(m.code, m.message); return; }
-                GameIdentityReceived?.Invoke(new LvgGameIdentity { identityToken = m.identityToken ?? "", gameId = m.gameId, gameSlug = m.gameSlug ?? "", playSessionId = m.playSessionId ?? "", expiresAt = m.expiresAt ?? "" });
-                return;
+                GameIdentityReceived?.Invoke(new LvgGameIdentity { identityToken = m.identityToken ?? "", gameId = m.gameId, gameSlug = m.gameSlug ?? "", playSessionId = m.playSessionId ?? "", expiresAt = m.expiresAt ?? "" }); return;
             case "LVG_REWARD_RESULT":
                 var reward = new LvgRewardResult { success = m.success, code = m.code ?? "", message = m.message ?? "", eventKey = m.eventKey ?? "", title = m.title ?? "", rewardCoin = m.rewardCoin, coinBalance = m.coinBalance, elapsedSeconds = m.elapsedSeconds, alreadyProcessed = m.alreadyProcessed };
                 if (reward.success) { CoinBalance = reward.coinBalance; IsLoggedIn = true; WalletUpdated?.Invoke(CoinBalance); } else RaiseError(reward.code, reward.message);
@@ -241,7 +251,7 @@ public sealed class LacVietGamesBridge : MonoBehaviour
     private sealed class LvgBridgeMessage
     {
         public string type, requestId, code, message, displayName, email, eventKey, title;
-        public bool success, alreadyProcessed, loggedIn;
+        public bool success, alreadyProcessed, loggedIn, approved;
         public int accountId, elapsedSeconds, gameId;
         public long coinBalance, rewardCoin;
         public string identityToken, gameSlug, playSessionId, expiresAt;
