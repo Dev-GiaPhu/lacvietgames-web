@@ -57,7 +57,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  enhanceFooter();
-  window.addEventListener("load", enhanceFooter, { once: true });
-  setTimeout(enhanceFooter, 250);
+  const polishAdminCopy = () => {
+    if (!document.body.classList.contains('admin-page')) return;
+    const exact = new Map([
+      ['Version chờ duyệt','Bản cập nhật chờ duyệt'],
+      ['Reward Lạc Coin','Phần thưởng Lạc Coin'],
+      ['Game Data','Dữ liệu game'],
+      ['Audit Log','Nhật ký quản trị'],
+      ['Publisher','Nhà phát hành']
+    ]);
+    document.querySelectorAll('.admin-nav span,.admin-section h2,.admin-card h3,.admin-page h1').forEach(el=>{
+      const value=el.textContent.trim(); if(exact.has(value)) el.textContent=exact.get(value);
+    });
+    document.querySelectorAll('.admin-section-head p,.admin-card p').forEach(el=>{
+      const value=el.textContent.trim();
+      if(value==='Dữ liệu thật từ database LacVietGames.') el.textContent='Hoạt động và số liệu mới nhất của LacVietGames.';
+      if(value.includes('Publisher không sửa trực tiếp game live')) el.textContent='Bản cập nhật mới được xét duyệt trước khi phát hành.';
+      if(value.includes('Cảnh báo reward anti-abuse')) el.textContent='Theo dõi hành vi bất thường và quản lý trạng thái tài khoản.';
+    });
+  };
+
+  enhanceFooter(); polishAdminCopy();
+  window.addEventListener("load", () => { enhanceFooter(); polishAdminCopy(); }, { once: true });
+  setTimeout(() => { enhanceFooter(); polishAdminCopy(); }, 250);
 });
