@@ -1,6 +1,8 @@
 mergeInto(LibraryManager.library, {
-  LVG_InitBridge: function () {
+  LVG_InitBridge: function (integrationIdPtr) {
     try {
+      var integrationId = integrationIdPtr ? UTF8ToString(integrationIdPtr).trim() : '';
+      window.__lvgIntegrationId = integrationId;
       if (!window.__lvgMessageQueue) window.__lvgMessageQueue = [];
       if (!window.__lvgBridgeListenerInstalled) {
         window.__lvgBridgeListenerInstalled = true;
@@ -14,7 +16,7 @@ mergeInto(LibraryManager.library, {
           } catch (e) {}
         });
       }
-      window.parent.postMessage({ type: 'LVG_SDK_READY' }, 'https://dev-giaphu.github.io');
+      window.parent.postMessage({ type: 'LVG_SDK_READY', integrationId: integrationId }, 'https://dev-giaphu.github.io');
     } catch (e) {}
   },
 
@@ -33,22 +35,22 @@ mergeInto(LibraryManager.library, {
   LVG_FreeMessage: function (ptr) { try { if (ptr) _free(ptr); } catch (e) {} },
 
   LVG_RequestAuth: function (requestIdPtr) {
-    try { window.parent.postMessage({ type: 'LVG_AUTH_REQUEST', requestId: UTF8ToString(requestIdPtr) }, 'https://dev-giaphu.github.io'); } catch (e) {}
+    try { window.parent.postMessage({ type: 'LVG_AUTH_REQUEST', requestId: UTF8ToString(requestIdPtr), integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {}
   },
 
   LVG_RequestWallet: function (requestIdPtr) {
-    try { window.parent.postMessage({ type: 'LVG_WALLET_REQUEST', requestId: UTF8ToString(requestIdPtr) }, 'https://dev-giaphu.github.io'); } catch (e) {}
+    try { window.parent.postMessage({ type: 'LVG_WALLET_REQUEST', requestId: UTF8ToString(requestIdPtr), integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {}
   },
 
   LVG_RequestIdentity: function (requestIdPtr) {
-    try { window.parent.postMessage({ type: 'LVG_IDENTITY_REQUEST', requestId: UTF8ToString(requestIdPtr) }, 'https://dev-giaphu.github.io'); } catch (e) {}
+    try { window.parent.postMessage({ type: 'LVG_IDENTITY_REQUEST', requestId: UTF8ToString(requestIdPtr), integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {}
   },
 
   LVG_ClaimReward: function (eventKeyPtr, requestIdPtr) {
-    try { window.parent.postMessage({ type: 'LVG_REWARD_CLAIM', eventKey: UTF8ToString(eventKeyPtr), requestId: UTF8ToString(requestIdPtr) }, 'https://dev-giaphu.github.io'); } catch (e) {}
+    try { window.parent.postMessage({ type: 'LVG_REWARD_CLAIM', eventKey: UTF8ToString(eventKeyPtr), requestId: UTF8ToString(requestIdPtr), integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {}
   },
 
-  LVG_GameplayStart: function () { try { window.parent.postMessage({ type: 'LVG_GAMEPLAY_START' }, 'https://dev-giaphu.github.io'); } catch (e) {} },
-  LVG_GameplayEnd: function () { try { window.parent.postMessage({ type: 'LVG_GAMEPLAY_END' }, 'https://dev-giaphu.github.io'); } catch (e) {} },
-  LVG_ReturnToStore: function () { try { window.parent.postMessage({ type: 'LVG_RETURN_TO_STORE' }, 'https://dev-giaphu.github.io'); } catch (e) {} }
+  LVG_GameplayStart: function () { try { window.parent.postMessage({ type: 'LVG_GAMEPLAY_START', integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {} },
+  LVG_GameplayEnd: function () { try { window.parent.postMessage({ type: 'LVG_GAMEPLAY_END', integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {} },
+  LVG_ReturnToStore: function () { try { window.parent.postMessage({ type: 'LVG_RETURN_TO_STORE', integrationId: window.__lvgIntegrationId || '' }, 'https://dev-giaphu.github.io'); } catch (e) {} }
 });
