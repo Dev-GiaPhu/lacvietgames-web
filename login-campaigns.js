@@ -9,7 +9,7 @@
     showing=true;let index=0;
     const modal=document.createElement("div");
     modal.className="server-auth-modal lvg-campaign-modal";modal.id="lvgCampaignModal";
-    modal.innerHTML=`<section class="server-auth-card" style="width:min(680px,100%);padding:0;overflow:hidden"><button class="server-auth-close" type="button" data-campaign-close style="z-index:2">×</button><div id="lvgCampaignBody"></div></section>`;
+    modal.innerHTML=`<section class="server-auth-card lvg-campaign-card" style="width:min(680px,100%);padding:0;overflow:hidden"><button class="server-auth-close" type="button" data-campaign-close>×</button><div id="lvgCampaignBody"></div></section>`;
     document.body.appendChild(modal);document.body.style.overflow="hidden";
     const body=modal.querySelector("#lvgCampaignBody");
     const render=()=>{
