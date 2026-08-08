@@ -1,9 +1,15 @@
 (() => {
-  if (!document.querySelector('link[data-lvg-premium-theme]')) {
+  const styles = [
+    ['./premium-theme.css?v=20260809-0330', 'lvgPremiumTheme'],
+    ['./legacy-red-gold.css?v=20260809-0330', 'lvgLegacyRedGold']
+  ];
+  if (document.body.classList.contains('admin-page')) styles.push(['./admin-red-gold.css?v=20260809-0330', 'lvgAdminRedGold']);
+  for (const [href, marker] of styles) {
+    if (document.querySelector(`link[data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}]`)) continue;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = './premium-theme.css?v=20260809-0305';
-    link.dataset.lvgPremiumTheme = '1';
+    link.href = href;
+    link.dataset[marker] = '1';
     document.head.appendChild(link);
   }
 
