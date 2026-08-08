@@ -1,6 +1,6 @@
 {
   "name": "com.lacvietgames.webgl",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "displayName": "LacVietGames WebGL SDK",
   "description": "Admin-approved account, wallet, playtime and reward integration for LacVietGames Unity WebGL games. No account/server secrets are embedded in the game.",
   "unity": "2021.3",
