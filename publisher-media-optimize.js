@@ -24,43 +24,18 @@
     return new File([blob], `${base}.webp`, { type: "image/webp", lastModified: Date.now() });
   }
 
-  function replaceInputFile(input, file) {
-    try {
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-    } catch {}
+  async function prepareFile(file) {
+    if (!file) throw new Error("Chưa chọn file.");
+    if (file.type.startsWith("video/") && file.size > MAX_VIDEO_BYTES) {
+      throw new Error("Video tối đa 250 MB. Hãy nén video trước khi gửi.");
+    }
+    if (file.type.startsWith("image/")) return optimizeImage(file);
+    return file;
   }
 
-  document.addEventListener("change", async event => {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.type !== "file") return;
-    const file = input.files?.[0];
-    if (!file) return;
-
-    if (input.matches("[data-media-file]")) {
-      if (file.type.startsWith("video/") && file.size > MAX_VIDEO_BYTES) {
-        alert("Video tối đa 250 MB để tránh upload quá nặng. Hãy nén video trước khi tải lên.");
-        input.value = "";
-        return;
-      }
-      if (file.type.startsWith("image/")) {
-        const oldName = file.name;
-        try {
-          const optimized = await optimizeImage(file);
-          replaceInputFile(input, optimized);
-          if (optimized !== file) {
-            const saved = Math.max(0, file.size - optimized.size);
-            const status = document.getElementById("publisherStatus");
-            if (status) status.textContent = `Đã tối ưu ${oldName} thành WebP trước khi upload, giảm ${(saved / 1024 / 1024).toFixed(1)} MB.`;
-          }
-        } catch {}
-      }
-    }
-
-    if (input.id === "downloadFile" && file.size > MAX_BUILD_BYTES) {
-      alert("Build tối đa 2 GB cho luồng upload hiện tại.");
-      input.value = "";
-    }
-  }, true);
+  window.LVGMediaOptimize = {
+    prepareFile,
+    maxVideoBytes: MAX_VIDEO_BYTES,
+    maxBuildBytes: MAX_BUILD_BYTES
+  };
 })();
