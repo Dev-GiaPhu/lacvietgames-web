@@ -4,8 +4,12 @@
   function harden() {
     const iframe = document.querySelector(".play-shell iframe");
     if (!iframe) return false;
-    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads allow-popups-to-escape-sandbox");
-    iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+
+    // Uploaded games are always treated as untrusted third-party code.
+    // Keep only the capabilities Unity WebGL needs; block forms, popups,
+    // top navigation and escape-from-sandbox behavior.
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-pointer-lock");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
     iframe.setAttribute("allow", "fullscreen; gamepad; autoplay");
     iframe.setAttribute("loading", "eager");
     return true;
