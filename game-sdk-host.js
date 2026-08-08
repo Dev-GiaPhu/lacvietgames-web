@@ -2,7 +2,7 @@
   if (document.body.dataset.page !== "play") return;
   const API=(window.APP_CONFIG?.API_BASE_URL||"").replace(/\/$/,"");
   const gameSlug=new URLSearchParams(location.search).get("id")||"";
-  let pendingLoginRequestId=null,playtimeTimer=null,playtimeBusy=false,presentedIntegrationId="",runtime=null,runtimePromise=null;
+  let pendingLoginRequestId=null,playtimeTimer=null,playtimeBusy=false,presentedIntegrationId="",runtime=null,runtimePromise=null,loginPrompted=false;
   const inflightClaims=new Set();
 
   function account(){if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[localStorage,sessionStorage]){try{const r=s.getItem("lacvietgamesStoreSession");if(r)return JSON.parse(r)}catch{}}return null}
@@ -31,7 +31,13 @@
 
   function requireCap(rt,key,message){if(!rt?.capabilities?.[key])throw integrationError("INTEGRATION_CAPABILITY_DENIED",message)}
   async function wallet(integrationId=presentedIntegrationId){const rt=await ensureRuntime(integrationId);requireCap(rt,"authWallet","Admin chưa cấp quyền tài khoản & ví cho game này.");const p=await api(`/api/store/game-sdk/wallet?gameSlug=${encodeURIComponent(gameSlug)}&integrationId=${encodeURIComponent(rt.integrationId)}`),d=p.data||{};cacheBalance(d.coinBalance);return d}
-  function openLogin(){const b=document.querySelector("[data-open-server-auth]");if(b)b.click();else setTimeout(()=>document.querySelector("[data-open-server-auth]")?.click(),250)}
+  function openLogin(){
+    if(loginPrompted)return;
+    loginPrompted=true;
+    let tries=0;
+    const attempt=()=>{const b=document.querySelector("[data-open-server-auth]");if(b){b.click();return}if(++tries<8)setTimeout(attempt,250)};
+    attempt();
+  }
 
   async function announceReady(){
     if(!presentedIntegrationId){send({type:"LVG_HOST_READY",loggedIn:!!account()?.token,approved:false,code:"INTEGRATION_ID_REQUIRED",message:"Build chưa có Integration ID."});return false}
@@ -41,6 +47,14 @@
   }
 
   async function answerAuth(id,integrationId=presentedIntegrationId){try{const d=await wallet(integrationId);send({type:"LVG_AUTH_RESULT",requestId:id,success:true,accountId:Number(d.accountId||0),displayName:d.displayName||"",email:d.email||"",coinBalance:Number(d.coinBalance||0)});return true}catch(e){if(e.code==="AUTH_REQUIRED")return false;send({type:"LVG_AUTH_RESULT",requestId:id,success:false,code:e.code||"AUTH_ERROR",message:e.message,ban:e.payload?.data||null});return false}}
+  async function autoAuthenticate(){
+    if(!presentedIntegrationId)return;
+    if(!account()?.token){pendingLoginRequestId="auto-auth";openLogin();return}
+    loginPrompted=false;
+    const ready=await announceReady();
+    if(!ready)return;
+    try{const rt=runtime||await ensureRuntime(presentedIntegrationId);if(rt.capabilities?.authWallet)await answerAuth("auto-auth",presentedIntegrationId)}catch{}
+  }
   async function requestAuth(id,integrationId){if(integrationId&&integrationId!==presentedIntegrationId){send({type:"LVG_AUTH_RESULT",requestId:id,success:false,code:"INTEGRATION_ID_MISMATCH",message:"Integration ID không khớp."});return}if(await answerAuth(id,integrationId))return;pendingLoginRequestId=id;openLogin()}
   async function requestWallet(id,integrationId){try{const d=await wallet(integrationId);send({type:"LVG_WALLET_RESULT",requestId:id,success:true,accountId:Number(d.accountId||0),displayName:d.displayName||"",email:d.email||"",coinBalance:Number(d.coinBalance||0)})}catch(e){send({type:"LVG_WALLET_RESULT",requestId:id,success:false,code:e.code||"WALLET_ERROR",message:e.message,ban:e.payload?.data||null})}}
 
@@ -53,8 +67,8 @@
   async function claimPlaytime(){if(playtimeBusy||document.hidden||!presentedIntegrationId)return;const play=window.LVGPlaySession;if(!play?.sessionId||!play?.clientToken||!account()?.token)return;playtimeBusy=true;try{const rt=await ensureRuntime(presentedIntegrationId);if(!rt.capabilities?.playTime)return;const p=await api("/api/store/game-sdk/rewards/claim-playtime",{method:"POST",body:{sessionId:play.sessionId,clientToken:play.clientToken}}),d=p.data||{};cacheBalance(d.coinBalance);for(const r of(d.rewards||[]))send({type:"LVG_REWARD_RESULT",requestId:"playtime",success:true,code:"PLAYTIME_REWARD_GRANTED",eventKey:r.eventKey||"",title:r.title||"",rewardCoin:Number(r.rewardCoin||0),coinBalance:Number(r.coinBalance??d.coinBalance??0),elapsedSeconds:Number(d.elapsedSeconds||0),alreadyProcessed:false})}catch(e){if(!["PLAY_SESSION_REQUIRED","PLAY_SESSION_NOT_ACTIVE","PLAY_SESSION_STALE","AUTH_REQUIRED","ACCOUNT_BANNED","GAME_INTEGRATION_NOT_APPROVED"].includes(e.code))console.warn("LacVietGames playtime reward check failed",e);if(e.code==="ACCOUNT_BANNED")send({type:"LVG_WALLET_RESULT",requestId:"ban",success:false,code:e.code,message:e.message,ban:e.payload?.data||null})}finally{playtimeBusy=false}}
   function startChecks(){clearInterval(playtimeTimer);claimPlaytime();playtimeTimer=setInterval(claimPlaytime,30000)}function stopChecks(){clearInterval(playtimeTimer);playtimeTimer=null}
 
-  window.addEventListener("message",e=>{const f=frame();if(!f||e.source!==f.contentWindow)return;const d=e.data||{},t=d.type;if(t==="LVG_SDK_READY"){presentedIntegrationId=String(d.integrationId||"").trim();runtime=null;runtimePromise=null;announceReady();return}if(t==="LVG_AUTH_REQUEST")return requestAuth(String(d.requestId||"auth"),String(d.integrationId||""));if(t==="LVG_WALLET_REQUEST")return requestWallet(String(d.requestId||"wallet"),String(d.integrationId||""));if(t==="LVG_IDENTITY_REQUEST")return requestIdentity(String(d.requestId||"identity"),String(d.integrationId||""));if(t==="LVG_REWARD_CLAIM")claimEvent(String(d.eventKey||"").trim().toLowerCase(),String(d.requestId||"reward"),String(d.integrationId||""))});
-  window.addEventListener("lvg:session-hydrated",async()=>{runtime=null;await announceReady();if(pendingLoginRequestId){const id=pendingLoginRequestId;pendingLoginRequestId=null;await answerAuth(id,presentedIntegrationId)}if(window.LVGPlaySession)claimPlaytime()});
+  window.addEventListener("message",e=>{const f=frame();if(!f||e.source!==f.contentWindow)return;const d=e.data||{},t=d.type;if(t==="LVG_SDK_READY"){presentedIntegrationId=String(d.integrationId||"").trim();runtime=null;runtimePromise=null;autoAuthenticate();return}if(t==="LVG_AUTH_REQUEST")return requestAuth(String(d.requestId||"auth"),String(d.integrationId||""));if(t==="LVG_WALLET_REQUEST")return requestWallet(String(d.requestId||"wallet"),String(d.integrationId||""));if(t==="LVG_IDENTITY_REQUEST")return requestIdentity(String(d.requestId||"identity"),String(d.integrationId||""));if(t==="LVG_REWARD_CLAIM")claimEvent(String(d.eventKey||"").trim().toLowerCase(),String(d.requestId||"reward"),String(d.integrationId||""))});
+  window.addEventListener("lvg:session-hydrated",async()=>{runtime=null;if(!presentedIntegrationId)return;if(account()?.token)loginPrompted=false;const ready=await announceReady();if(pendingLoginRequestId&&account()?.token){const id=pendingLoginRequestId;pendingLoginRequestId=null;await answerAuth(id,presentedIntegrationId)}else if(ready&&account()?.token){try{const rt=runtime||await ensureRuntime(presentedIntegrationId);if(rt.capabilities?.authWallet)await answerAuth("auto-auth",presentedIntegrationId)}catch{}}if(window.LVGPlaySession)claimPlaytime()});
   window.addEventListener("lvg:play-session-started",startChecks);window.addEventListener("lvg:play-session-ended",stopChecks);window.addEventListener("pagehide",stopChecks);document.addEventListener("visibilitychange",()=>{if(!document.hidden&&window.LVGPlaySession)claimPlaytime()});
   window.LVGGameSdkHost={loadWallet:()=>wallet(presentedIntegrationId),claimPlaytimeRewards:claimPlaytime};
 })();
