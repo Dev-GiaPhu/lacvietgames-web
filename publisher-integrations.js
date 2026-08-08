@@ -1,9 +1,9 @@
 (() => {
   if(window.__LVGR2StatusCompat)return;
   window.__LVGR2StatusCompat=true;
-  const rawFetch=window.fetch.bind(window);
+  const nativeFetch=window.fetch.bind(window);
   window.fetch=async(...args)=>{
-    const response=await rawFetch(...args);
+    const response=await nativeFetch(...args);
     try{
       const input=args[0],url=typeof input==='string'?input:(input?.url||'');
       if(url.includes('/api/store/webgl-uploads/status')&&response.ok){
@@ -25,80 +25,44 @@
   const KEY='lacvietgamesStoreSession';
   const $=id=>document.getElementById(id);
   const esc=(v='')=>String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const date=v=>v?new Date(v).toLocaleString('vi-VN'):'—';
-  const CAP_NAMES={authWallet:'Tài khoản & ví',playTime:'PlayTime server',clientRewards:'Client reward nhỏ',serverVerified:'ServerVerified'};
-  const CAP_HELP={
-    authWallet:'Đọc thông tin tài khoản cơ bản và số dư để hiển thị trong game. Game không được sửa số dư.',
-    playTime:'LacVietGames đo thời gian chơi phía server và tự xử lý reward PlayTime.',
-    clientRewards:'Cho phép game gửi event reward nhỏ. Server vẫn quyết định số coin, cooldown và giới hạn.',
-    serverVerified:'Dành cho win/competitive/reward giá trị cao; cần verifier backend tin cậy do Admin kiểm soát.'
-  };
-  let rows=[];
+  const when=v=>v?new Date(v).toLocaleString('vi-VN'):'—';
+  let games=[],catalog=[];
 
-  function session(){if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[sessionStorage,localStorage]){try{const r=s.getItem(KEY);if(r)return JSON.parse(r)}catch{}}return null}
+  function session(){if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[sessionStorage,localStorage]){try{const raw=s.getItem(KEY);if(raw)return JSON.parse(raw)}catch{}}return null}
   async function req(path,opt={}){const s=session();if(!s?.token)throw new Error('Bạn cần đăng nhập Publisher Center.');const r=await fetch(`${API}${path}`,{method:opt.method||'GET',headers:{'Content-Type':'application/json',Authorization:`Bearer ${s.token}`},body:opt.body?JSON.stringify(opt.body):undefined});const p=await r.json().catch(()=>null);if(!r.ok||p?.success===false){const e=new Error(p?.message||'Không thể xử lý yêu cầu.');e.code=p?.code;throw e}return p}
-  function status(v='',bad=false){const e=$('publisherIntegrationStatus');if(e){e.textContent=v;e.style.color=bad?'#ff9bab':'#83e6ae'}}
-  function caps(c={}){return Object.entries(CAP_NAMES).filter(([k])=>!!c[k]).map(([k,n])=>`<span class="pub-int-cap">${esc(n)}</span>`).join('')||'<span class="pub-int-muted">Chưa có quyền</span>'}
-  function hasExtra(x){const a=x.approved||{},r=x.requested||{};return Object.keys(CAP_NAMES).some(k=>!!r[k]&&!a[k])}
+  function setStatus(text='',bad=false){const el=$('publisherIntegrationStatus');if(el){el.textContent=text;el.style.color=bad?'#ff9bab':'#83e6ae'}}
 
-  function style(){if($('publisherIntegrationStyle'))return;const s=document.createElement('style');s.id='publisherIntegrationStyle';s.textContent=`
-    .publisher-integration-card{margin-bottom:20px;min-width:0;overflow:hidden}.pub-int-list{display:grid;gap:14px}.pub-int-item{min-width:0;border:1px solid #2a3650;border-radius:17px;background:#0d1421;padding:16px;box-sizing:border-box}.pub-int-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.pub-int-top h3{margin:0 0 5px}.pub-int-game-mark{display:inline-flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px;font-weight:800;color:#91a6c7;text-transform:uppercase;letter-spacing:.06em}.pub-int-meta,.pub-int-muted{font-size:12px;color:#8391aa;line-height:1.6;overflow-wrap:anywhere}.pub-int-section{margin-top:13px;padding-top:13px;border-top:1px solid #202b3f}.pub-int-section-title{font-size:12px;font-weight:800;color:#d7dfed;margin-bottom:7px}.pub-int-caps{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0}.pub-int-cap{font-size:11px;border:1px solid #36506f;background:#101c2d;color:#a9c9f4;border-radius:999px;padding:5px 8px}.pub-int-form{display:grid;gap:10px;margin-top:10px}.pub-int-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.pub-int-check{min-width:0;display:grid!important;grid-template-columns:auto minmax(0,1fr);gap:8px!important;align-items:start!important;background:#0a111c;border:1px solid #29364e;border-radius:11px;padding:10px!important;color:#cdd6e7!important}.pub-int-check input{width:auto!important;margin-top:2px}.pub-int-check b{display:block;font-size:12px}.pub-int-check small{display:block;margin-top:3px;color:#7f8da5;font-size:10px;line-height:1.45}.pub-int-check.locked{border-color:#285b42;background:#0c2018}.pub-int-check.locked small{color:#7fbd99}.pub-int-note{width:100%;box-sizing:border-box;min-height:68px;background:#09111d;border:1px solid #303d57;color:#e8edf7;border-radius:10px;padding:10px;font:inherit;resize:vertical}.pub-int-actions{display:flex;gap:8px;flex-wrap:wrap}.pub-int-approved{padding:11px;border:1px solid #285b42;background:#0c271a;border-radius:11px;color:#92e4b3;font-size:12px;line-height:1.6}.pub-int-warn{padding:11px;border:1px solid #6f4a27;background:#291b0d;border-radius:11px;color:#ffc77b;font-size:12px;line-height:1.6}.pub-int-pending{padding:11px;border:1px solid #36506f;background:#101c2d;border-radius:11px;color:#a9c9f4;font-size:12px;line-height:1.6}.pub-int-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere;word-break:break-all}.pub-int-kit{display:grid;gap:8px;margin-top:10px}.pub-int-code{width:100%;box-sizing:border-box;background:#080e17;border:1px solid #2d3a51;color:#a8efc2;border-radius:10px;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;overflow-wrap:anywhere}.pub-int-own-id{padding:10px;border-radius:11px;background:#09111d;border:1px solid #24324a}.pub-int-separate{font-size:11px;color:#71829f;margin-top:4px}@media(max-width:700px){.pub-int-checks{grid-template-columns:1fr}}
+  function addStyle(){if($('publisherIntegrationStyle'))return;const s=document.createElement('style');s.id='publisherIntegrationStyle';s.textContent=`
+    .publisher-integration-card{margin-bottom:20px;min-width:0;overflow:hidden}.sdk-game-list{display:grid;gap:12px}.sdk-game{border:1px solid #2a3650;border-radius:16px;background:#0d1421;padding:15px;min-width:0}.sdk-game-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.sdk-game-head h3{margin:0 0 4px}.sdk-meta{font-size:12px;color:#8492ab;line-height:1.55}.sdk-caps{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.sdk-cap{border:1px solid #33496a;background:#101b2b;border-radius:999px;padding:5px 8px;font-size:11px;color:#b8c9e5}.sdk-cap.pending{border-color:#725729;color:#f3ca88}.sdk-group{margin-top:14px;padding-top:13px;border-top:1px solid #202b3f}.sdk-group-title{font-size:12px;font-weight:800;margin-bottom:8px;color:#dfe6f2}.sdk-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.sdk-option{display:flex;gap:8px;align-items:center;border:1px solid #29364e;background:#09111d;border-radius:10px;padding:9px;font-size:12px;color:#cbd5e5}.sdk-option input{width:auto}.sdk-option.approved{border-color:#285b42;background:#0c2018}.sdk-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.sdk-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;background:#080e17;border:1px solid #2d3a51;border-radius:10px;padding:10px;color:#a8efc2;font-size:11px;margin-top:7px}.sdk-note{width:100%;box-sizing:border-box;min-height:64px;margin-top:9px;background:#09111d;border:1px solid #303d57;color:#e8edf7;border-radius:10px;padding:9px;font:inherit;resize:vertical}@media(max-width:900px){.sdk-options{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.sdk-options{grid-template-columns:1fr}}
   `;document.head.appendChild(s)}
 
-  function install(){style();const content=$('publisherContent');if(!content||$('publisherIntegrationCard'))return;const card=document.createElement('section');card.id='publisherIntegrationCard';card.className='portal-card publisher-integration-card';card.innerHTML=`<div class="portal-toolbar"><div><h2 style="margin:0">Tích hợp LacVietGames SDK</h2><small style="color:#8492ab">Mỗi game có Integration ID và bộ quyền riêng. Có thể xin thêm quyền bất kỳ lúc nào; quyền cũ không bị tắt khi chờ duyệt.</small></div><button id="refreshPublisherIntegrations" class="mini-btn" type="button">Làm mới</button></div><div id="publisherIntegrationStatus" class="portal-status"></div><div id="publisherIntegrationList" class="pub-int-list"></div>`;const stats=content.querySelector('.publisher-stats');if(stats)stats.insertAdjacentElement('afterend',card);else content.prepend(card);$('refreshPublisherIntegrations').onclick=load;card.addEventListener('click',actions);card.addEventListener('submit',submit);load()}
+  function install(){addStyle();const content=$('publisherContent');if(!content||$('publisherIntegrationCard'))return;const card=document.createElement('section');card.id='publisherIntegrationCard';card.className='portal-card publisher-integration-card';card.innerHTML=`<div class="portal-toolbar"><div><h2 style="margin:0">LacVietGames SDK</h2><small style="color:#8492ab">Tích hợp theo từng game</small></div><div class="sdk-actions"><a class="mini-btn" href="./sdk-guide.html">Unity SDK</a><button id="refreshPublisherIntegrations" class="mini-btn" type="button">Làm mới</button></div></div><div id="publisherIntegrationStatus" class="portal-status"></div><div id="publisherIntegrationList" class="sdk-game-list"></div>`;const stats=content.querySelector('.publisher-stats');if(stats)stats.insertAdjacentElement('afterend',card);else content.prepend(card);$('refreshPublisherIntegrations').onclick=load;card.addEventListener('submit',submit);card.addEventListener('click',click);load()}
 
-  async function load(){if(!session()?.token)return;status('Đang tải quyền tích hợp theo từng game...');try{rows=(await req('/api/store/publisher/integrations')).data||[];render();status('Đã đồng bộ quyền riêng của từng game.')}catch(e){status(e.message,true)}}
+  async function load(){if(!session()?.token)return;setStatus('Đang tải...');try{
+    const [g,c]=await Promise.all([req('/api/store/publisher/integrations'),req('/api/store/publisher/integrations/capability-catalog')]);
+    games=g.data||[];catalog=c.data||[];
+    await Promise.all(games.filter(x=>x.applicationId).map(async x=>{try{x.capabilityState=(await req(`/api/store/publisher/integrations/${x.gameId}/capabilities`)).data}catch{x.capabilityState=null}}));
+    render();setStatus('');
+  }catch(e){setStatus(e.message,true)}}
 
-  function render(){const root=$('publisherIntegrationList');root.innerHTML=rows.map(x=>{
-    const st=x.status||'NotRequested';
-    return `<article class="pub-int-item" data-pub-int="${x.gameId}"><div class="pub-int-top"><div><div class="pub-int-game-mark">Cấu hình riêng cho game #${x.gameId}</div><h3>${esc(x.gameName)}</h3><div class="pub-int-meta">${esc(x.gameSlug)} · ${esc(x.gameStatus)} · ${st==='NotRequested'?'chưa đăng ký SDK':'cập nhật '+date(x.updatedAt)}</div><div class="pub-int-separate">Quyền và Integration ID của game này không dùng chung với game khác.</div></div><span class="status-chip ${String(st).toLowerCase()}">${esc(st)}</span></div>${viewFor(x)}</article>`;
-  }).join('')||'<div class="portal-empty">Bạn chưa có game để đăng ký tích hợp SDK.</div>'}
+  function capMap(x){const map={};for(const c of x.capabilityState?.capabilities||[])map[c.key]=c;return map}
+  function chips(items,klass=''){return items.length?items.map(x=>`<span class="sdk-cap ${klass}">${esc(x.name)}</span>`).join(''):'<span class="sdk-meta">—</span>'}
+  function render(){const root=$('publisherIntegrationList');root.innerHTML=games.map(x=>{
+    const state=capMap(x),approved=catalog.filter(c=>state[c.key]?.approved),pending=catalog.filter(c=>state[c.key]?.reviewPending&&!state[c.key]?.approved);
+    const status=x.status||'NotRequested';
+    return `<article class="sdk-game" data-sdk-game="${x.gameId}"><div class="sdk-game-head"><div><h3>${esc(x.gameName)}</h3><div class="sdk-meta">${esc(x.gameSlug)} · #${x.gameId} · ${when(x.updatedAt)}</div></div><span class="status-chip ${String(status).toLowerCase()}">${esc(status)}</span></div>${approved.length?`<div class="sdk-group"><div class="sdk-group-title">Đang hoạt động</div><div class="sdk-caps">${chips(approved)}</div></div>`:''}${pending.length?`<div class="sdk-group"><div class="sdk-group-title">Đang chờ duyệt</div><div class="sdk-caps">${chips(pending,'pending')}</div></div>`:''}${status!=='Suspended'?form(x,state):''}${x.integrationId?kit(x):''}</article>`;
+  }).join('')||'<div class="portal-empty">Chưa có game.</div>'}
 
-  function viewFor(x){
-    if(x.status==='Approved')return approvedView(x);
-    if(x.status==='Pending')return pendingView(x);
-    if(x.status==='Suspended')return suspendedView(x)+requestForm(x,true);
-    return requestForm(x,false);
-  }
+  function form(x,state){return `<form class="sdk-group" data-sdk-cap-form="${x.gameId}"><div class="sdk-group-title">Tính năng SDK</div><div class="sdk-options">${catalog.map(c=>{const s=state[c.key],approved=!!s?.approved,selected=approved||!!s?.requested;return `<label class="sdk-option ${approved?'approved':''}"><input type="checkbox" data-sdk-cap="${esc(c.key)}" ${selected?'checked':''} ${approved?'disabled':''}><span>${esc(c.name)}</span></label>`}).join('')}</div><textarea class="sdk-note" data-sdk-note maxlength="1200" placeholder="Ghi chú cho yêu cầu"></textarea><div class="sdk-actions"><button class="mini-btn primary" type="submit">${x.applicationId?'Cập nhật yêu cầu':'Đăng ký SDK'}</button></div></form>`}
+  function kit(x){return `<div class="sdk-group"><div class="sdk-group-title">Integration ID</div><div class="sdk-id">${esc(x.integrationId)}</div><div class="sdk-actions"><button class="mini-btn" type="button" data-copy-id="${x.gameId}">Copy</button><button class="mini-btn primary" type="button" data-kit="${x.gameId}">Bộ tích hợp Unity</button></div><div data-kit-output></div></div>`}
 
-  function capabilityForm(x,mode){
-    const approved=x.approved||{},requested=x.requested||{};
-    const base=mode==='initial'?requested:(x.reviewPending?requested:approved);
-    const boxes=Object.entries(CAP_NAMES).map(([k,name])=>{
-      const locked=mode!=='initial'&&!!approved[k];
-      const checked=locked||!!base[k]||(mode==='initial'&&(k==='authWallet'||k==='playTime'));
-      return `<label class="pub-int-check ${locked?'locked':''}"><input data-c="${k}" type="checkbox" ${checked?'checked':''} ${locked?'disabled':''}><span><b>${esc(name)}${locked?' · Đã duyệt':''}</b><small>${esc(CAP_HELP[k])}</small></span></label>`;
-    }).join('');
-    const button=mode==='initial'?(x.status==='Rejected'||x.status==='Suspended'?'Gửi lại đăng ký':'Gửi đăng ký tích hợp'):(x.reviewPending?'Cập nhật yêu cầu đang chờ':'Gửi yêu cầu bổ sung quyền');
-    return `<form class="pub-int-form" data-int-form="${x.gameId}" data-int-mode="${mode}"><div class="pub-int-checks">${boxes}</div><textarea class="pub-int-note" data-note maxlength="1200" placeholder="Mô tả game cần dùng các quyền này như thế nào...">${esc(x.publisherNote||'')}</textarea><div class="pub-int-actions"><button class="mini-btn primary" type="submit">${button}</button></div></form>`;
-  }
+  async function submit(e){const form=e.target.closest('[data-sdk-cap-form]');if(!form)return;e.preventDefault();const gameId=Number(form.dataset.sdkCapForm),row=games.find(x=>Number(x.gameId)===gameId),selected=[...form.querySelectorAll('[data-sdk-cap]')].filter(x=>x.checked).map(x=>x.dataset.sdkCap),note=form.querySelector('[data-sdk-note]')?.value.trim()||null;if(!selected.length){setStatus('Chọn ít nhất một tính năng.',true);return}try{
+    if(!row?.applicationId){const has=k=>selected.includes(k);await req('/api/store/publisher/integrations',{method:'POST',body:{gameId,authWallet:has('account.basic')||has('wallet.balance')||has('entitlement.read')||has('wallet.transactions'),playTime:has('playtime.read')||has('rewards.playtime'),clientRewards:has('rewards.client'),serverVerified:has('rewards.server_verified'),note}})}
+    await req(`/api/store/publisher/integrations/${gameId}/capabilities/request`,{method:'POST',body:{capabilities:selected,note}});setStatus('Đã gửi yêu cầu.');await load();
+  }catch(err){setStatus(err.message,true)}}
 
-  function requestForm(x,resubmit){return `<div class="pub-int-section"><div class="pub-int-section-title">Chọn quyền cho riêng ${esc(x.gameName)}</div><div class="pub-int-warn">Chỉ chọn tính năng game thực sự cần. Số Lạc Coin, reward rule và logic bảo mật vẫn do LacVietGames server quyết định.</div>${capabilityForm(x,'initial')}${x.adminNote?`<div class="pub-int-meta">Phản hồi Admin: ${esc(x.adminNote)}</div>`:''}</div>`}
-  function pendingView(x){return `<div class="pub-int-section"><div class="pub-int-section-title">Quyền đang yêu cầu</div><div class="pub-int-caps">${caps(x.requested)}</div><div class="pub-int-warn">Đăng ký ban đầu của game này đang chờ Admin duyệt. Chưa có quyền production được bật.</div>${x.publisherNote?`<p class="pub-int-meta">Ghi chú: ${esc(x.publisherNote)}</p>`:''}</div>`}
-
-  function approvedView(x){
-    const pending=x.reviewPending&&hasExtra(x);
-    return `<div class="pub-int-section"><div class="pub-int-section-title">Quyền đang hoạt động</div><div class="pub-int-caps">${caps(x.approved)}</div><div class="pub-int-approved">Các quyền trên đã được Admin duyệt và vẫn hoạt động${pending?' trong lúc quyền mới đang chờ xét':''}.</div></div>${pending?`<div class="pub-int-section"><div class="pub-int-section-title">Quyền bổ sung đang chờ duyệt</div><div class="pub-int-caps">${caps(x.requested)}</div><div class="pub-int-pending">Admin đang xét phần quyền bổ sung. Integration ID hiện tại và các quyền cũ không thay đổi.</div></div>`:''}<div class="pub-int-section"><div class="pub-int-section-title">Yêu cầu thêm quyền cho game này</div>${capabilityForm(x,'expand')}</div><div class="pub-int-section pub-int-kit"><div class="pub-int-section-title">Bộ tích hợp riêng của game</div><div class="pub-int-approved">Integration ID là định danh công khai của <b>${esc(x.gameName)}</b>, không phải secret và không dùng cho game khác.</div><div class="pub-int-meta">Integration ID</div><div class="pub-int-code pub-int-id">${esc(x.integrationId||'')}</div><div class="pub-int-actions"><button class="mini-btn" type="button" data-copy-id="${x.gameId}">Copy Integration ID</button><button class="mini-btn primary" type="button" data-kit="${x.gameId}">Lấy bộ tích hợp Unity</button></div><div data-kit-output></div></div>${x.adminNote?`<p class="pub-int-meta">Admin: ${esc(x.adminNote)}</p>`:''}`;
-  }
-  function suspendedView(x){return `<div class="pub-int-section"><div class="pub-int-warn">Admin đã khóa quyền SDK của riêng game này. Các game khác không bị ảnh hưởng.${x.adminNote?`<br>Lý do: ${esc(x.adminNote)}`:''}</div></div>`}
-
-  async function submit(e){
-    const form=e.target.closest('[data-int-form]');if(!form)return;e.preventDefault();
-    const gameId=Number(form.dataset.intForm),row=rows.find(x=>Number(x.gameId)===gameId),get=k=>{
-      const input=form.querySelector(`[data-c="${k}"]`);return !!input?.checked;
-    };
-    const body={gameId,authWallet:get('authWallet'),playTime:get('playTime'),clientRewards:get('clientRewards'),serverVerified:get('serverVerified'),note:form.querySelector('[data-note]')?.value.trim()||null};
-    // Disabled approved checkboxes remain checked, but keep an explicit merge as defense against DOM edits.
-    if(row?.status==='Approved'){for(const k of Object.keys(CAP_NAMES))if(row.approved?.[k])body[k]=true;}
-    try{const p=await req('/api/store/publisher/integrations',{method:'POST',body});status(p.message);await load()}catch(x){status(x.message,true)}
-  }
-
-  async function actions(e){
-    const copy=e.target.closest('[data-copy-id]');if(copy){const x=rows.find(r=>Number(r.gameId)===Number(copy.dataset.copyId));if(x?.integrationId){await navigator.clipboard.writeText(x.integrationId);status(`Đã copy Integration ID của ${x.gameName}.`)}return}
-    const kit=e.target.closest('[data-kit]');if(kit){const gameId=Number(kit.dataset.kit),row=kit.closest('[data-pub-int]'),out=row?.querySelector('[data-kit-output]');try{const d=(await req(`/api/store/publisher/integrations/${gameId}/kit`)).data||{};if(out)out.innerHTML=`<div class="pub-int-meta">Unity Package Manager → Add package from git URL:</div><div class="pub-int-code">${esc(d.unityPackageGitUrl||'')}</div><div class="pub-int-actions"><button class="mini-btn" type="button" data-copy-package="${gameId}">Copy Package URL</button><button class="mini-btn" type="button" data-download-kit="${gameId}">Tải cấu hình của game này</button></div>`;row.dataset.packageUrl=d.unityPackageGitUrl||'';row.dataset.kitJson=JSON.stringify(d)}catch(x){status(x.message,true)}return}
-    const pkg=e.target.closest('[data-copy-package]');if(pkg){const row=pkg.closest('[data-pub-int]');if(row?.dataset.packageUrl){await navigator.clipboard.writeText(row.dataset.packageUrl);status('Đã copy Unity Package URL.')}return}
-    const dl=e.target.closest('[data-download-kit]');if(dl){const row=dl.closest('[data-pub-int]');if(!row?.dataset.kitJson)return;const d=JSON.parse(row.dataset.kitJson),blob=new Blob([JSON.stringify({integrationId:d.integrationId,gameId:d.gameId,gameSlug:d.gameSlug,packageGitUrl:d.unityPackageGitUrl,capabilities:d.capabilities},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`lacvietgames-${d.gameSlug||d.gameId}-integration.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-  }
+  async function click(e){const copy=e.target.closest('[data-copy-id]');if(copy){const x=games.find(r=>Number(r.gameId)===Number(copy.dataset.copyId));if(x?.integrationId){await navigator.clipboard.writeText(x.integrationId);setStatus('Đã copy Integration ID.')}return}const kit=e.target.closest('[data-kit]');if(!kit)return;const gameId=Number(kit.dataset.kit),row=kit.closest('[data-sdk-game]'),out=row?.querySelector('[data-kit-output]');try{const d=(await req(`/api/store/publisher/integrations/${gameId}/kit`)).data||{};row.dataset.packageUrl=d.unityPackageGitUrl||'';row.dataset.kitJson=JSON.stringify(d);if(out)out.innerHTML=`<div class="sdk-id">${esc(d.unityPackageGitUrl||'')}</div><div class="sdk-actions"><button class="mini-btn" type="button" data-copy-package>Copy Package URL</button><button class="mini-btn" type="button" data-download-kit>Tải cấu hình</button></div>`}catch(err){setStatus(err.message,true)}}
+  document.addEventListener('click',async e=>{const pkg=e.target.closest('[data-copy-package]');if(pkg){const row=pkg.closest('[data-sdk-game]');if(row?.dataset.packageUrl){await navigator.clipboard.writeText(row.dataset.packageUrl);setStatus('Đã copy Package URL.')}return}const dl=e.target.closest('[data-download-kit]');if(dl){const row=dl.closest('[data-sdk-game]');if(!row?.dataset.kitJson)return;const d=JSON.parse(row.dataset.kitJson),blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`lacvietgames-${d.gameSlug||d.gameId}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}});
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
   window.addEventListener('lvg:session-hydrated',()=>{if(!$('publisherIntegrationCard'))install();else load()});
