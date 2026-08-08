@@ -38,4 +38,34 @@
     new MutationObserver(normalize).observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['style'] });
     normalize();
   }
+
+  const addSdkGuideLink = () => {
+    const card = $('publisherIntegrationCard');
+    if (!card || $('publisherSdkGuideLink')) return !!card;
+    const toolbar = card.querySelector('.portal-toolbar');
+    if (!toolbar) return false;
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+    const guide = document.createElement('a');
+    guide.id = 'publisherSdkGuideLink';
+    guide.className = 'mini-btn';
+    guide.href = './sdk-guide.html';
+    guide.textContent = 'Hướng dẫn Unity SDK';
+    guide.style.textDecoration = 'none';
+    const refresh = $('refreshPublisherIntegrations');
+    if (refresh) {
+      refresh.insertAdjacentElement('beforebegin', guide);
+      return true;
+    }
+    actions.appendChild(guide);
+    toolbar.appendChild(actions);
+    return true;
+  };
+
+  if (!addSdkGuideLink()) {
+    const guideObserver = new MutationObserver(() => {
+      if (addSdkGuideLink()) guideObserver.disconnect();
+    });
+    guideObserver.observe(document.body, { childList: true, subtree: true });
+  }
 })();
