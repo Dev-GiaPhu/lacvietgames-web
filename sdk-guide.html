@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Hướng dẫn tích hợp LacVietGames WebGL SDK cho Unity Publisher.">
+  <meta name="theme-color" content="#070b14">
+  <title>Hướng dẫn Unity SDK | LacVietGames</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./sdk-guide.css?v=20260809-0000">
+</head>
+<body>
+<header class="guide-top">
+  <div class="guide-top-inner">
+    <a class="guide-brand" href="./index.html"><span class="guide-brand-mark">LV</span><span>LacVietGames SDK</span></a>
+    <div class="guide-top-actions">
+      <a class="guide-btn" href="./index.html">Cửa hàng</a>
+      <a class="guide-btn primary" href="./publisher.html">Mở Publisher Center</a>
+    </div>
+  </div>
+</header>
+
+<div class="guide-shell">
+  <aside class="guide-nav">
+    <b>Nội dung</b>
+    <a href="#overview">Cách hoạt động</a>
+    <a href="#register">1. Đăng ký tích hợp</a>
+    <a href="#install">2. Cài Unity Package</a>
+    <a href="#scene">3. Chọn scene Setup</a>
+    <a href="#setup">4. Setup SDK</a>
+    <a href="#login">5. Tự đăng nhập từ web</a>
+    <a href="#gameplay">6. Bắt đầu / kết thúc gameplay</a>
+    <a href="#reward">7. Reward Lạc Coin</a>
+    <a href="#test">8. Kiểm tra trước khi upload</a>
+    <a href="#errors">Lỗi thường gặp</a>
+  </aside>
+
+  <main class="guide-main">
+    <section class="hero" id="overview">
+      <span class="hero-badge">Unity WebGL · SDK v1.0.3</span>
+      <h1>Tích hợp LacVietGames vào game Unity mà không tự làm hệ thống đăng nhập.</h1>
+      <p>Người chơi mở game từ LacVietGames sẽ tự dùng tài khoản đang đăng nhập trên website. Game không nhận mật khẩu, bearer token, R2 key hay Game Server Key.</p>
+      <div class="hero-points">
+        <span class="hero-point">Tự đồng bộ tài khoản</span>
+        <span class="hero-point">Ví Lạc Coin từ server</span>
+        <span class="hero-point">PlayTime do server đo</span>
+        <span class="hero-point">Reward do Admin kiểm soát</span>
+      </div>
+    </section>
+
+    <section class="guide-section">
+      <div class="section-head"><span class="section-kicker">Hiểu trước khi làm</span><h2>Luồng thực tế của người chơi</h2><p>Publisher không cần tạo form Email/Mật khẩu trong Unity.</p></div>
+      <div class="flow">
+        <div class="flow-box"><b>1. Mở LacVietGames</b><span>Người chơi truy cập website</span></div><div class="flow-arrow">→</div>
+        <div class="flow-box"><b>2. Mở game</b><span>WebGL chạy trong trang Play</span></div><div class="flow-arrow">→</div>
+        <div class="flow-box"><b>3. SDK tự xác thực</b><span>Dùng session của website</span></div><div class="flow-arrow">→</div>
+        <div class="flow-box"><b>4. Unity nhận account</b><span>Tên, ID, số dư LC</span></div>
+      </div>
+      <div class="callout good" style="margin-top:12px"><b>Nếu người chơi chưa đăng nhập:</b> LacVietGames tự mở bảng đăng nhập trên website. Sau khi đăng nhập xong, Unity nhận tài khoản tự động. Không cần nút Login trong game.</div>
+    </section>
+
+    <section class="guide-section" id="register">
+      <div class="section-head"><span class="section-kicker">Bước 1</span><h2>Đăng ký quyền tích hợp</h2><p>Chỉ game đã được Admin duyệt mới sử dụng được SDK production.</p></div>
+      <div class="grid-2">
+        <article class="card step"><span class="step-no">1</span><h3>Vào Publisher Center</h3><p>Mở mục <b>Tích hợp LacVietGames SDK</b>, chọn game và chọn các quyền cần dùng.</p></article>
+        <article class="card step"><span class="step-no">2</span><h3>Chờ Admin duyệt</h3><p>Sau khi duyệt, bạn nhận <b>Integration ID</b> và Unity Package URL. Integration ID là định danh công khai, không phải secret.</p></article>
+      </div>
+      <div class="kv card" style="margin-top:12px"><b>Account & Wallet</b><span>Đọc tài khoản và số dư Lạc Coin đang đăng nhập.</span><b>PlayTime</b><span>Server đo thời gian gameplay thật.</span><b>Client Reward</b><span>Cho event reward nhỏ, bị giới hạn chặt trên server.</span><b>ServerVerified</b><span>Dành cho reward giá trị cao có backend xác minh riêng.</span></div>
+    </section>
+
+    <section class="guide-section" id="install">
+      <div class="section-head"><span class="section-kicker">Bước 2</span><h2>Cài Unity Package</h2><p>Dùng Unity Package Manager. Không copy file SDK thủ công vào Assets.</p></div>
+      <article class="card">
+        <div class="checklist">
+          <div class="check"><i>1</i><span>Unity → <b>Window → Package Manager</b></span></div>
+          <div class="check"><i>2</i><span>Bấm dấu <b>+</b> → <b>Add package from git URL...</b></span></div>
+          <div class="check"><i>3</i><span>Dán URL dưới đây và bấm Add.</span></div>
+        </div>
+        <div class="code"><div class="code-head"><span>Unity Package Git URL</span><button data-copy="https://github.com/Dev-GiaPhu/lacvietgames-web.git?path=/sdk/unity-package#main">Copy</button></div><pre>https://github.com/Dev-GiaPhu/lacvietgames-web.git?path=/sdk/unity-package#main</pre></div>
+        <div class="callout good" style="margin-top:12px">Cài đúng sẽ thấy package <b>LacVietGames WebGL SDK · 1.0.3</b> và menu <b>Tools → LacVietGames → Setup</b>.</div>
+      </article>
+    </section>
+
+    <section class="guide-section" id="scene">
+      <div class="section-head"><span class="section-kicker">Bước 3</span><h2>Setup ở scene nào?</h2><p>Chỉ Setup một lần ở scene khởi động đầu tiên của game.</p></div>
+      <div class="grid-3">
+        <article class="card scene-card"><span class="scene-tag recommended">Khuyên dùng</span><h3>Có Boot / Bootstrap</h3><p>Mở Boot scene rồi Setup ở đây. SDK được giữ lại khi đổi scene.</p><div class="scene-flow">Boot
+↓
+MainMenu
+↓
+Gameplay
+↓
+Result</div></article>
+        <article class="card scene-card"><span class="scene-tag normal">Phổ biến</span><h3>Main Menu là scene đầu</h3><p>Mở MainMenu rồi Setup. Không Setup lại trong Gameplay hoặc Result.</p><div class="scene-flow">MainMenu [SETUP]
+↓
+Gameplay
+↓
+Result</div></article>
+        <article class="card scene-card"><span class="scene-tag instant">Game ngắn</span><h3>Mở lên chơi ngay</h3><p>Setup ngay trong Gameplay scene và chọn chế độ mở game là vào gameplay ngay.</p><div class="scene-flow">Gameplay [SETUP]
+↓
+Result</div></article>
+      </div>
+      <div class="callout warn" style="margin-top:12px"><b>Không Setup ở nhiều scene.</b> Object LacVietGames dùng DontDestroyOnLoad nên một instance là đủ cho toàn game.</div>
+    </section>
+
+    <section class="guide-section" id="setup">
+      <div class="section-head"><span class="section-kicker">Bước 4</span><h2>Chạy Setup Wizard</h2><p>Wizard tự cấu hình object SDK theo cấu trúc game.</p></div>
+      <div class="grid-2">
+        <article class="card"><h3>Trong Unity</h3><div class="scene-flow">Tools
+→ LacVietGames
+→ Setup</div><p style="margin-top:10px">Dán Integration ID được cấp trong Publisher Center, chọn đúng cấu trúc game rồi bấm <b>Setup SDK in Current Scene</b>.</p></article>
+        <article class="card"><h3>Wizard tự làm gì?</h3><div class="checklist"><div class="check"><i>✓</i><span>Tạo GameObject <b>LacVietGames</b>.</span></div><div class="check"><i>✓</i><span>Gắn <b>LacVietGamesBridge</b>.</span></div><div class="check"><i>✓</i><span>Lưu Integration ID công khai.</span></div><div class="check"><i>✓</i><span>Bật DontDestroyOnLoad.</span></div><div class="check"><i>✓</i><span>Tự cấu hình Auto Start nếu game mở thẳng vào gameplay.</span></div></div></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="login">
+      <div class="section-head"><span class="section-kicker">Bước 5</span><h2>Tài khoản người chơi tự đăng nhập từ web</h2><p>Không cần gọi RequestLogin() trong luồng bình thường.</p></div>
+      <article class="card">
+        <div class="flow">
+          <div class="flow-box"><b>Website đã login</b><span>Session nằm ở LacVietGames</span></div><div class="flow-arrow">→</div>
+          <div class="flow-box"><b>Game khởi tạo SDK</b><span>Gửi Integration ID</span></div><div class="flow-arrow">→</div>
+          <div class="flow-box"><b>Host xác minh</b><span>Đúng game + đúng quyền Admin</span></div><div class="flow-arrow">→</div>
+          <div class="flow-box"><b>Unity nhận account</b><span>Không nhận password/token</span></div>
+        </div>
+        <div class="callout good" style="margin-top:12px">Nếu chỉ cần gameplay/reward, bạn không phải viết code Login nào cả. SDK tự đồng bộ tài khoản khi game mở từ LacVietGames.</div>
+      </article>
+      <div class="grid-2" style="margin-top:12px">
+        <article class="card"><h3>Dữ liệu Unity được phép đọc</h3><div class="code"><div class="code-head"><span>C#</span></div><pre>var sdk = LacVietGamesBridge.Instance;
+
+sdk.IsLoggedIn
+sdk.AccountId
+sdk.DisplayName
+sdk.CoinBalance</pre></div></article>
+        <article class="card"><h3>Nếu muốn hiện tên + ví trong UI</h3><div class="code"><div class="code-head"><span>C#</span><button data-copy="void Start() {\n    var sdk = LacVietGamesBridge.Instance;\n    sdk.Authenticated += account => RefreshUI();\n    sdk.WalletUpdated += balance => RefreshUI();\n}">Copy</button></div><pre>void Start()
+{
+    var sdk = LacVietGamesBridge.Instance;
+    sdk.Authenticated += account => RefreshUI();
+    sdk.WalletUpdated += balance => RefreshUI();
+}</pre></div></article>
+      </div>
+      <div class="callout danger" style="margin-top:12px"><b>Tuyệt đối không tạo form Email/Mật khẩu riêng trong game Publisher.</b> Việc đăng nhập chỉ diễn ra trên website LacVietGames.</div>
+    </section>
+
+    <section class="guide-section" id="gameplay">
+      <div class="section-head"><span class="section-kicker">Bước 6</span><h2>Báo thời điểm gameplay thật sự bắt đầu và kết thúc</h2><p>Chỉ cần phần này nếu game có Boot/Main Menu. Game mở thẳng vào gameplay thì Wizard tự bật Auto Start.</p></div>
+      <div class="grid-2">
+        <article class="card"><h3>Khi người chơi bấm Play</h3><div class="code"><div class="code-head"><span>C#</span><button data-copy="LacVietGamesBridge.Instance.GameplayStarted();">Copy</button></div><pre>LacVietGamesBridge.Instance.GameplayStarted();</pre></div><p style="margin-top:9px">Gọi đúng lúc bắt đầu chơi thật, không gọi lúc đang ở Main Menu.</p></article>
+        <article class="card"><h3>Khi trận chơi kết thúc</h3><div class="code"><div class="code-head"><span>C#</span><button data-copy="LacVietGamesBridge.Instance.GameplayEnded();">Copy</button></div><pre>LacVietGamesBridge.Instance.GameplayEnded();</pre></div><p style="margin-top:9px">Gọi khi trận kết thúc hoặc người chơi quay lại menu.</p></article>
+      </div>
+      <div class="callout good" style="margin-top:12px">PlayTime reward không cần code nhận thưởng. Server tự tính thời gian giữa GameplayStarted và GameplayEnded/checkpoint.</div>
+    </section>
+
+    <section class="guide-section" id="reward">
+      <div class="section-head"><span class="section-kicker">Bước 7</span><h2>Reward Lạc Coin</h2><p>Unity chỉ gửi Event Key. Số coin và giới hạn nằm hoàn toàn trên server.</p></div>
+      <div class="grid-3">
+        <article class="card"><span class="scene-tag normal">PlayTime</span><h3>Không cần code claim</h3><p>Chỉ cần GameplayStarted / GameplayEnded. Admin cấu hình mốc thời gian và số LC.</p></article>
+        <article class="card"><span class="scene-tag instant">Client reward nhỏ</span><h3>Quest / event đơn giản</h3><p>Thêm component <b>LacVietGamesRewardTrigger</b>, nhập Event Key rồi nối TriggerReward() vào UnityEvent.</p><div class="code"><div class="code-head"><span>Hoặc C#</span></div><pre>LacVietGamesBridge.Instance
+    .ClaimReward("quest_complete");</pre></div></article>
+        <article class="card"><span class="scene-tag recommended">ServerVerified</span><h3>Win / reward giá trị cao</h3><p>Cần backend game xác minh kết quả. Không đặt Game Server Key trong Unity/WebGL.</p></article>
+      </div>
+      <div class="callout warn" style="margin-top:12px">Publisher không nhập số LC trong Unity. Ví dụ Event Key <b>quest_complete</b> có thể là +20 LC hay +50 LC hoàn toàn do Admin LacVietGames cấu hình.</div>
+    </section>
+
+    <section class="guide-section" id="test">
+      <div class="section-head"><span class="section-kicker">Bước 8</span><h2>Checklist trước khi upload build</h2><p>Kiểm tra những mục này là đủ cho phần lớn game WebGL.</p></div>
+      <article class="card checklist">
+        <div class="check"><i>✓</i><span>Package Manager hiển thị <b>LacVietGames WebGL SDK 1.0.3</b>.</span></div>
+        <div class="check"><i>✓</i><span>Chỉ có một GameObject <b>LacVietGames</b> ở scene khởi động.</span></div>
+        <div class="check"><i>✓</i><span>Integration ID đúng ID được Admin cấp cho game đó.</span></div>
+        <div class="check"><i>✓</i><span>Nếu có Main Menu: Play gọi GameplayStarted(), kết thúc gọi GameplayEnded().</span></div>
+        <div class="check"><i>✓</i><span>Không có password, bearer token, R2 key hoặc Game Server Key trong project.</span></div>
+        <div class="check"><i>✓</i><span>Build WebGL và test từ trang Play của LacVietGames để kiểm tra đăng nhập thật.</span></div>
+      </article>
+      <div class="callout warn" style="margin-top:12px"><b>Unity Editor không thể lấy tài khoản website thật.</b> Tài khoản thật chỉ được đồng bộ khi build WebGL chạy bên trong LacVietGames. Editor chỉ dùng chế độ simulation nếu cần test UI.</div>
+    </section>
+
+    <section class="guide-section" id="errors">
+      <div class="section-head"><span class="section-kicker">Xử lý nhanh</span><h2>Lỗi thường gặp</h2><p>Ưu tiên kiểm tra Console và version package trước.</p></div>
+      <div class="grid-2">
+        <article class="card"><h3>Không thấy Tools → LacVietGames</h3><p>Remove package rồi Add lại Git URL. Đảm bảo package là 1.0.3 và Console không có compile error màu đỏ.</p></article>
+        <article class="card"><h3>GAME_INTEGRATION_NOT_APPROVED</h3><p>Game chưa được Admin duyệt SDK hoặc quyền đã bị khóa. Kiểm tra Publisher Center.</p></article>
+        <article class="card"><h3>INTEGRATION_ID_MISMATCH</h3><p>Integration ID thuộc game khác hoặc build đang dùng ID cũ. Copy lại từ đúng game trong Publisher Center.</p></article>
+        <article class="card"><h3>Không thấy account khi chạy Editor</h3><p>Bình thường. Account production được lấy từ website khi chạy WebGL trên LacVietGames, không lấy trực tiếp trong Editor.</p></article>
+      </div>
+    </section>
+
+    <section class="guide-section">
+      <div class="card" style="text-align:center;padding:26px"><span class="section-kicker">Hoàn tất</span><h2 style="margin:6px 0 8px">Cài package → Setup một scene → build WebGL → upload.</h2><p style="color:var(--muted);font-size:12px;margin:0 0 15px">Phần đăng nhập tài khoản từ website được SDK xử lý tự động.</p><a class="guide-btn primary" href="./publisher.html">Quay lại Publisher Center</a></div>
+    </section>
+  </main>
+</div>
+
+<footer class="guide-footer">LacVietGames WebGL SDK · Publisher Integration Guide</footer>
+<script>
+  document.addEventListener('click',async e=>{const b=e.target.closest('[data-copy]');if(!b)return;try{await navigator.clipboard.writeText(b.dataset.copy||'');const old=b.textContent;b.textContent='Đã copy';setTimeout(()=>b.textContent=old,1300)}catch{}});
+</script>
+</body>
+</html>
