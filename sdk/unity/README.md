@@ -1,259 +1,199 @@
 # LacVietGames Unity WebGL SDK
 
-SDK này cho game Unity WebGL dùng tài khoản LacVietGames, hiển thị ví Lạc Coin, gửi gameplay START/END và yêu cầu server reward.
+SDK dùng tài khoản LacVietGames, ví Lạc Coin server-side, gameplay session, PlayTime reward, ClientCapped reward và ServerVerified reward.
 
-## 1. Copy 3 file vào Unity
+## Cài vào Unity
+
+Copy:
 
 - `LacVietGamesBridge.cs` -> `Assets/Scripts/LacVietGames/`
-- `LacVietGamesExampleUsage.cs` -> `Assets/Scripts/LacVietGames/` (file ví dụ, có thể xóa sau khi tích hợp)
-- `Plugins/WebGL/LacVietGamesBridge.jslib` -> **đúng** đường dẫn `Assets/Plugins/WebGL/LacVietGamesBridge.jslib`
+- `LacVietGamesExampleUsage.cs` -> file ví dụ
+- `Plugins/WebGL/LacVietGamesBridge.jslib` -> `Assets/Plugins/WebGL/LacVietGamesBridge.jslib`
 
-Tạo một GameObject tên `LacVietGames` ở scene đầu tiên và attach `LacVietGamesBridge`.
+Tạo một GameObject `LacVietGames`, attach `LacVietGamesBridge`. Bridge tự `DontDestroyOnLoad`.
 
-Bridge tự `DontDestroyOnLoad`, vì vậy chỉ cần một object cho toàn game.
-
-## 2. Đăng nhập tài khoản trong game
-
-Nút Đăng nhập của game gọi:
+## Account và ví
 
 ```csharp
 LacVietGamesBridge.Instance.RequestLogin();
-```
-
-Nếu người chơi chưa đăng nhập, LacVietGames mở form đăng nhập bên ngoài iframe game. Sau khi đăng nhập, Unity nhận **chỉ**:
-
-- accountId
-- displayName
-- email
-- coinBalance
-
-Unity **không nhận bearer token, mật khẩu, R2 key hoặc server secret**.
-
-Đọc trạng thái hiện tại:
-
-```csharp
-var sdk = LacVietGamesBridge.Instance;
-Debug.Log(sdk.IsLoggedIn);
-Debug.Log(sdk.DisplayName);
-Debug.Log(sdk.CoinBalance);
-```
-
-Lắng nghe tài khoản/ví:
-
-```csharp
-private void Start()
-{
-    var sdk = LacVietGamesBridge.Instance;
-    sdk.Authenticated += account =>
-    {
-        playerNameText.text = account.displayName;
-        walletText.text = account.coinBalance.ToString("N0") + " LC";
-    };
-
-    sdk.WalletUpdated += balance =>
-    {
-        walletText.text = balance.ToString("N0") + " LC";
-    };
-}
-```
-
-Lấy lại số dư thật từ server:
-
-```csharp
 LacVietGamesBridge.Instance.RefreshWallet();
 ```
 
-Không lưu số dư game economy vào PlayerPrefs để làm nguồn dữ liệu chính. `CoinBalance` trong Unity chỉ là bản hiển thị của số dư server.
+Unity chỉ nhận accountId, displayName, email và coinBalance để hiển thị. Bearer token chính không được trả cho Unity. Số dư thật luôn nằm trong database server; không dùng PlayerPrefs làm nguồn Lạc Coin.
 
-## 3. START / END gameplay
-
-Nếu game có Main Menu, để `Auto Start Gameplay = false`.
-
-Khi bấm Play và gameplay thật sự bắt đầu:
+## Gameplay session
 
 ```csharp
-LacVietGamesBridge.Instance.GameplayStarted();
+LacVietGamesBridge.Instance.GameplayStarted(); // khi gameplay thật bắt đầu
+LacVietGamesBridge.Instance.GameplayEnded();   // khi run/match kết thúc
 ```
 
-Khi run/match kết thúc hoặc trở về menu trong game:
+Server ghi thời gian, lease/checkpoint và trạng thái session. Unity không gửi playedMinutes.
 
-```csharp
-LacVietGamesBridge.Instance.GameplayEnded();
-```
+## Ba chế độ reward
 
-Nếu game mở thẳng vào gameplay, có thể bật `Auto Start Gameplay` trên Inspector.
+### 1. ServerTime — dùng cho PlayTime
 
-Khi muốn thoát iframe và quay về trang game LacVietGames:
+Admin tạo rule `PlayTime`. LacVietGames tự đo thời gian server và tự cấp reward khi đủ mốc. Unity không cần gọi `ClaimReward`.
 
-```csharp
-LacVietGamesBridge.Instance.ReturnToLacVietGames();
-```
+Ví dụ: chơi 10 phút -> 20 LC. Người chơi chỉnh clock/client code không thể biến thành 10 phút vì duration không lấy từ Unity.
 
-## 4. Reward khi thắng / hoàn thành nhiệm vụ
+### 2. ClientCapped — chỉ dùng reward nhỏ trong game WebGL không có backend riêng
 
-Trong Unity **không truyền số coin**.
-
-Đúng:
-
-```csharp
-LacVietGamesBridge.Instance.ClaimReward("win");
-```
-
-hoặc:
+Unity gọi:
 
 ```csharp
 LacVietGamesBridge.Instance.ClaimReward("quest_daily_1");
 ```
 
-Không có API kiểu này:
+Unity KHÔNG truyền số coin. Server quyết định reward, min play, cooldown, max/session, max/day, max/account và Daily Coin Cap.
+
+Vì WebGL client-only không thể chứng minh mật mã rằng một event như `win` thật sự xảy ra, LacVietGames khóa ClientCapped ở server:
+
+- tối đa 50 LC/lần
+- tối đa 10 lần/ngày/rule
+- tối đa 5 lần/session
+- tối đa 500 LC/ngày/rule
+- tối thiểu 30 giây server play time
+
+Dùng ClientCapped cho quest nhỏ/casual, không dùng cho reward thắng trận có giá trị cao.
+
+### 3. ServerVerified — dùng cho `win`, competitive, leaderboard, reward có giá trị
+
+**Không gọi `ClaimReward("win")` cho rule này.** Client endpoint không thể truy cập ServerVerified rule.
+
+Unity xin identity token ngắn hạn:
 
 ```csharp
-// KHÔNG TỒN TẠI
-AddCoin(20);
-Reward(999999);
-```
-
-Server có rule riêng cho từng game. Ví dụ server cấu hình:
-
-```text
-Event key: win
-Reward: 20 LC
-Minimum play time: 60 giây
-Cooldown: 30 giây
-Maximum / session: 5
-Maximum / day: 20
-```
-
-Game chỉ biết báo `win`. Backend kiểm tra account, game, play-session, session token, server time, cooldown, giới hạn phiên/ngày rồi mới cộng 20 LC vào database.
-
-Nhận kết quả:
-
-```csharp
-LacVietGamesBridge.Instance.RewardCompleted += reward =>
+LacVietGamesBridge.Instance.GameIdentityReceived += identity =>
 {
-    if (!reward.success)
-    {
-        Debug.LogWarning(reward.code + ": " + reward.message);
-        return;
-    }
-
-    Debug.Log($"+{reward.rewardCoin} LC");
-    Debug.Log($"Wallet = {reward.coinBalance} LC");
+    // Gửi identity.identityToken + matchId tới BACKEND game của bạn qua HTTPS.
 };
+
+LacVietGamesBridge.Instance.RequestGameIdentityToken();
 ```
 
-## 5. Reward theo thời gian chơi
+Identity token chỉ ràng buộc:
 
-Không cần Unity tự tính phút chơi.
+- account
+- game
+- play session
+- thời hạn khoảng 10 phút
 
-Admin tạo rule server có:
+Nó không chứa account bearer token và **không phải bằng chứng thắng**.
 
-```text
-Trigger type: PlayTime
-Event key: play_10_minutes
-Reward: 20 LC
-Minimum play time: 600 giây
+Backend game của developer phải tự xác minh match/result. Sau khi xác minh thật sự thắng, backend game gọi LacVietGames:
+
+```http
+POST /api/store/game-sdk/server/rewards/claim
+X-LVG-Game-Key: lvg_sk_...
+Content-Type: application/json
 ```
-
-Trang LacVietGames tự kiểm tra định kỳ. Khi server xác nhận phiên đã chơi đủ 600 giây, server tự cộng reward và Unity nhận `RewardCompleted` để có thể hiện popup `+20 Lạc Coin`.
-
-Tắt tab, mất mạng, crash hoặc chỉnh đồng hồ client không làm server tin thời gian Unity gửi vì Unity không gửi duration.
-
-## 6. Server reward rules
-
-Reward economy chỉ Admin được thay đổi.
-
-Backend hiện có:
-
-```text
-GET    /api/store/admin/game-rewards
-GET    /api/store/admin/game-rewards/games
-POST   /api/store/admin/game-rewards
-PUT    /api/store/admin/game-rewards/{id}
-POST   /api/store/admin/game-rewards/{id}/toggle
-DELETE /api/store/admin/game-rewards/{id}
-```
-
-Body tạo một reward thắng game 20 LC:
 
 ```json
 {
-  "gameId": 1,
+  "identityToken": "<token Unity gửi tới backend game>",
   "eventKey": "win",
-  "title": "Thắng một ván",
-  "triggerType": "Event",
-  "rewardCoin": 20,
-  "minPlaySeconds": 60,
-  "cooldownSeconds": 30,
-  "maxPerSession": 5,
-  "maxPerDay": 20,
-  "isActive": true
+  "externalEventId": "match-unique-id-123"
 }
 ```
 
-Reward chơi đủ 10 phút:
+`externalEventId` phải duy nhất cho kết quả/match. LacVietGames hash nó thành receipt idempotent: backend retry do timeout/mất mạng vẫn chỉ trả đúng một reward.
 
-```json
-{
-  "gameId": 1,
-  "eventKey": "play_10_minutes",
-  "title": "Chơi đủ 10 phút",
-  "triggerType": "PlayTime",
-  "rewardCoin": 20,
-  "minPlaySeconds": 600,
-  "cooldownSeconds": 0,
-  "maxPerSession": 1,
-  "maxPerDay": 1,
-  "isActive": true
-}
-```
+## Game Server Key
 
-## 7. Bảo mật chống người chơi tự gọi Reward
+Admin tạo key trong **Admin -> Reward Lạc Coin -> Game Server Keys**.
 
-LacVietGames hiện bảo vệ các lớp sau:
-
-- Bearer token chính không nằm trong Unity build.
-- Play-session client token cũng không được đưa vào Unity.
-- Unity không được quyết định số coin.
-- Reward rule nằm trong database backend.
-- Reward bắt buộc gắn đúng account + đúng game + active play-session.
-- Play-session hết lease/stale bị từ chối.
-- Server tự tính thời gian từ `started_at`.
-- Mỗi reward có minimum play time.
-- Có cooldown.
-- Có maximum claims / session.
-- Có maximum claims / ngày.
-- Mỗi request có idempotency key phía host để tránh retry mạng cộng trùng.
-- Cộng coin + reward claim + transaction được xử lý server-side trong transaction database.
-
-### Giới hạn cần hiểu
-
-Với game WebGL client-only, không có cách mật mã nào chứng minh tuyệt đối rằng người chơi **thật sự thắng** nếu toàn bộ logic thắng/thua nằm trên máy người chơi. Người dùng có DevTools vẫn có thể cố phát tín hiệu `win`.
-
-Các rule `minPlaySeconds`, cooldown và claim limits ngăn việc spam/mint coin tùy ý, nhưng reward có giá trị lớn hoặc game cạnh tranh nên dùng game server authoritative: game server xác nhận match result rồi backend LacVietGames mới cấp reward.
-
-Đối với casual game và reward nhỏ, mô hình hiện tại phù hợp: client báo sự kiện, server quyết định tiền và giới hạn.
-
-## 8. Flow thực tế
+Key bí mật chỉ hiển thị đúng một lần. Lưu trong environment/secret manager của backend game, ví dụ:
 
 ```text
-Unity GameplayStarted()
-        ↓
-LacVietGames parent
-        ↓
-Backend tạo play session
-        ↓
-Unity ClaimReward("win")
-        ↓
-Parent thêm account + play-session bí mật
-        ↓
-Backend kiểm tra rule + thời gian + cooldown + limit
-        ↓
-Database cộng Lạc Coin + transaction log
-        ↓
-Unity nhận RewardCompleted
-        ↓
-UI cập nhật ví / popup reward
+LVG_GAME_SERVER_KEY=lvg_sk_...
 ```
 
-Không đặt API secret hoặc private signing key trong Unity/WebGL build.
+**Cấm:**
+
+- đặt key trong Unity
+- đặt key trong `.jslib`
+- đặt key trong WebGL JavaScript
+- commit key lên GitHub
+- gửi key cho client
+
+Nếu key lộ, Admin bấm **Thu hồi key** và tạo key mới. Key cũ bị vô hiệu ngay.
+
+## Reward transaction và chống mất thưởng
+
+Mỗi reward có receipt/idempotency. Các thao tác sau nằm trong cùng database transaction:
+
+1. tạo `game_reward_claims`
+2. cộng `accounts.coin_balance`
+3. ghi `store_transactions`
+
+Nếu request timeout sau khi server đã commit, host/backend retry với cùng request id/external event id. Server trả receipt cũ, không cộng lần hai. Nếu transaction lỗi trước commit thì không bước nào được ghi. Vì vậy tránh cả double-credit lẫn trường hợp coin đã cộng mà không có ledger.
+
+## Anti-abuse / hack alerts
+
+Server ghi `game_reward_attempts` và tạo `security_incidents` cho tín hiệu đáng ngờ như:
+
+- sai play-session token
+- session/account mismatch
+- event không tồn tại
+- claim quá sớm
+- reward request flood
+- Game Server Key sai/revoked
+- identity token sai/hết hạn
+- server key của game A dùng với identity game B
+
+Raw IP/User-Agent không được lưu trong incident; hệ thống dùng fingerprint HMAC server-side. High/Critical incident gửi notification cho Admin và xuất hiện trong **Admin -> Bảo mật & Ban**.
+
+## Ban người dùng
+
+Admin có thể:
+
+- ban theo phút/giờ/ngày
+- ban vĩnh viễn
+- ghi lý do
+- gỡ ban
+
+Khi ban, server:
+
+- tăng `session_version` để thu hồi session hiện tại
+- đóng play session đang chạy
+- chặn authenticated Store API
+- chặn ServerVerified reward
+- lưu audit log
+
+Admin account không thể bị ban từ UI quản lý user này.
+
+## Admin Reward Rules
+
+Admin có thể cấu hình:
+
+- Game
+- Event Key
+- Trigger Type
+- Verification Mode: ServerTime / ClientCapped / ServerVerified
+- Reward Coin
+- Min Play Time
+- Cooldown
+- Max / Session
+- Max / Day
+- Max / Account
+- Daily Coin Cap
+- Start / End Date
+- Active
+
+Rule đã từng phát tiền không bị hard-delete; khi Admin xóa, server chỉ disable để giữ monetary audit trail.
+
+## Security boundary cần hiểu
+
+Không có cách làm cho WebGL client-only trở thành authoritative chỉ bằng obfuscation. Người chơi sở hữu trình duyệt và có thể quan sát/mô phỏng client code. Vì vậy LacVietGames không dùng bí mật nằm trong Unity để bảo vệ tiền.
+
+Kiến trúc an toàn là:
+
+```text
+Client-only nhỏ        -> ClientCapped + server caps
+PlayTime               -> ServerTime
+Win / competitive      -> developer authoritative backend -> ServerVerified -> LacVietGames wallet
+```
+
+Với ServerVerified, người chơi dù đăng nhập và tự gọi `ClaimReward("win")`/Postman vào client reward endpoint cũng không chạm được rule `win`, vì rule được lưu thành server-only trigger và chỉ endpoint có Game Server Key mới đọc/chi trả nó.
