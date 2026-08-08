@@ -2,7 +2,7 @@
   if (!document.querySelector('link[data-lvg-premium-theme]')) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = './premium-theme.css?v=20260809-0256';
+    link.href = './premium-theme.css?v=20260809-0305';
     link.dataset.lvgPremiumTheme = '1';
     document.head.appendChild(link);
   }
@@ -13,12 +13,14 @@
     return enabled;
   };
   if (!markDashboard()) {
-    const observer = new MutationObserver(() => {
-      if (markDashboard()) observer.disconnect();
-    });
+    const observer = new MutationObserver(() => { if (markDashboard()) observer.disconnect(); });
     observer.observe(document.documentElement, { childList: true, subtree: true });
     setTimeout(() => observer.disconnect(), 10000);
   }
+
+  document.addEventListener('click', event => {
+    if (event.target.closest('#logoutProfile,[data-lvg-logout]')) window.LVGSession?.logout?.();
+  }, true);
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
