@@ -1,30 +1,22 @@
 using UnityEngine;
 
 /// <summary>
-/// Example only. Attach this beside LacVietGamesBridge while integrating,
-/// then replace these callbacks with your own UI/game logic.
+/// Integration example. Never store a Game Server Key in this Unity project.
 /// </summary>
 public sealed class LacVietGamesExampleUsage : MonoBehaviour
 {
-    [Header("Server event keys")]
-    [SerializeField] private string winEventKey = "win";
-    [SerializeField] private string questEventKey = "quest_daily_1";
-
+    [Header("ClientCapped event keys only")]
+    [SerializeField] private string lowValueQuestEventKey = "quest_daily_1";
     private LacVietGamesBridge sdk;
 
     private void Start()
     {
         sdk = LacVietGamesBridge.Instance;
-        if (sdk == null)
-        {
-            Debug.LogError("Missing LacVietGamesBridge in the scene.");
-            enabled = false;
-            return;
-        }
-
+        if (sdk == null) { Debug.LogError("Missing LacVietGamesBridge in the scene."); enabled = false; return; }
         sdk.Authenticated += OnAuthenticated;
         sdk.WalletUpdated += OnWalletUpdated;
         sdk.RewardCompleted += OnRewardCompleted;
+        sdk.GameIdentityReceived += OnGameIdentity;
         sdk.Error += OnSdkError;
     }
 
@@ -34,78 +26,53 @@ public sealed class LacVietGamesExampleUsage : MonoBehaviour
         sdk.Authenticated -= OnAuthenticated;
         sdk.WalletUpdated -= OnWalletUpdated;
         sdk.RewardCompleted -= OnRewardCompleted;
+        sdk.GameIdentityReceived -= OnGameIdentity;
         sdk.Error -= OnSdkError;
     }
 
-    // Connect your in-game "Đăng nhập" button here.
-    public void LoginButton()
+    public void LoginButton() => sdk.RequestLogin();
+    public void StartGameButton() => sdk.GameplayStarted();
+    public void EndGame() => sdk.GameplayEnded();
+    public void RefreshWalletButton() => sdk.RefreshWallet();
+    public void BackToLacVietGamesButton() => sdk.ReturnToLacVietGames();
+
+    /// <summary>
+    /// LOW-VALUE client event only. Admin must configure this event as ClientCapped.
+    /// LacVietGames server still decides amount/time/cooldown/caps.
+    /// </summary>
+    public void LowValueQuestCompleted() => sdk.ClaimReward(lowValueQuestEventKey);
+
+    /// <summary>
+    /// HIGH-VALUE win/competitive reward flow.
+    /// Do NOT call ClaimReward("win"). Ask for a scoped identity and send it to YOUR backend.
+    /// Your backend verifies the real match result, then calls LacVietGames with its secret Game Server Key.
+    /// </summary>
+    public void PlayerWonServerVerified() => sdk.RequestGameIdentityToken();
+
+    private void OnGameIdentity(LvgGameIdentity identity)
     {
-        sdk.RequestLogin();
+        Debug.Log($"Scoped identity ready for game backend. Game={identity.gameSlug}, expires={identity.expiresAt}");
+
+        // Send ONLY identity.identityToken + your own match/run id to YOUR HTTPS backend.
+        // Example conceptual payload:
+        // POST https://api.yourgame.com/match/finish
+        // { identityToken, matchId }
+        //
+        // Your backend must independently validate the actual win/result.
+        // Only after validation does YOUR backend call:
+        // POST https://lacvietgames-api-production.up.railway.app/api/store/game-sdk/server/rewards/claim
+        // Header: X-LVG-Game-Key: <SERVER SECRET FROM ENV>
+        // Body: { identityToken, eventKey: "win", externalEventId: matchId }
+        //
+        // NEVER send the Game Server Key to Unity.
     }
 
-    // Connect your "Play" button here, exactly when gameplay really starts.
-    public void StartGameButton()
+    private void OnAuthenticated(LvgAccount a) => Debug.Log($"Logged in: {a.displayName} | Wallet: {a.coinBalance} LC");
+    private void OnWalletUpdated(long balance) => Debug.Log($"Wallet updated: {balance} LC");
+    private void OnRewardCompleted(LvgRewardResult r)
     {
-        sdk.GameplayStarted();
+        if (!r.success) { Debug.LogWarning($"Reward denied: {r.code} - {r.message}"); return; }
+        Debug.Log($"Reward: {r.title} +{r.rewardCoin} LC | Wallet: {r.coinBalance} LC");
     }
-
-    // Call ONLY when your own game logic decides that the player won.
-    // Unity sends only "win". The backend decides the reward amount and limits.
-    public void PlayerWon()
-    {
-        sdk.ClaimReward(winEventKey);
-    }
-
-    // Example quest completion.
-    public void DailyQuestCompleted()
-    {
-        sdk.ClaimReward(questEventKey);
-    }
-
-    // Call when the match/run ends or when returning to the game's own menu.
-    public void EndGame()
-    {
-        sdk.GameplayEnded();
-    }
-
-    public void RefreshWalletButton()
-    {
-        sdk.RefreshWallet();
-    }
-
-    public void BackToLacVietGamesButton()
-    {
-        sdk.ReturnToLacVietGames();
-    }
-
-    private void OnAuthenticated(LvgAccount account)
-    {
-        Debug.Log($"Logged in: {account.displayName} | Wallet: {account.coinBalance} LC");
-        // Example UI:
-        // playerNameText.text = account.displayName;
-        // walletText.text = account.coinBalance.ToString("N0") + " LC";
-    }
-
-    private void OnWalletUpdated(long coinBalance)
-    {
-        Debug.Log($"Wallet updated: {coinBalance} LC");
-        // walletText.text = coinBalance.ToString("N0") + " LC";
-    }
-
-    private void OnRewardCompleted(LvgRewardResult reward)
-    {
-        if (!reward.success)
-        {
-            Debug.LogWarning($"Reward denied: {reward.code} - {reward.message}");
-            return;
-        }
-
-        Debug.Log($"Reward: {reward.title} +{reward.rewardCoin} LC | Wallet: {reward.coinBalance} LC");
-        // rewardPopup.Show($"+{reward.rewardCoin} Lạc Coin");
-    }
-
-    private void OnSdkError(LvgSdkError error)
-    {
-        Debug.LogWarning($"LacVietGames SDK: {error.code} - {error.message}");
-    }
+    private void OnSdkError(LvgSdkError e) => Debug.LogWarning($"LacVietGames SDK: {e.code} - {e.message}");
 }
