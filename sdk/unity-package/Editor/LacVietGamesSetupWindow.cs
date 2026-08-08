@@ -33,7 +33,9 @@ public sealed class LacVietGamesSetupWindow : EditorWindow
 
     private void Setup()
     {
-        var bridge = FindFirstObjectByType<LacVietGamesBridge>();
+#pragma warning disable CS0618
+        var bridge = Object.FindObjectOfType<LacVietGamesBridge>();
+#pragma warning restore CS0618
         if (bridge == null)
         {
             var go = new GameObject("LacVietGames");
