@@ -4,10 +4,11 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-0256", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-0256", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-0305", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-0305", "lvgGamingDashboard"]
   ]) {
-    if (document.querySelector(`link[data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}]`)) continue;
+    const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
+    if (document.querySelector(`link[${attr}]`)) continue;
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = href;
@@ -19,6 +20,7 @@ window.APP_CONFIG = {
 (() => {
   const STORE_KEY = "lacvietgamesStoreSession";
   const LEGACY_KEY = "lacvietgamesSession";
+  const COOKIE_SENTINEL = "cookie.session";
   const API_BASE = window.APP_CONFIG.API_BASE_URL.replace(/\/$/, "");
   const RELOAD_KEY = "__lvg_session_refreshing";
   const protectedStorageKeys = new Set([STORE_KEY, LEGACY_KEY]);
@@ -27,8 +29,6 @@ window.APP_CONFIG = {
   let inflightMe = null;
   let inflightMeClearTimer = null;
 
-  // Authentication data must not persist across browser restarts. Migrate any old
-  // persistent session once, then remove it from localStorage.
   for (const key of protectedStorageKeys) {
     try {
       const persistent = localStorage.getItem(key);
@@ -37,8 +37,6 @@ window.APP_CONFIG = {
     } catch {}
   }
 
-  // Compatibility guard for older scripts that still try to honor "remember me".
-  // Sensitive LacVietGames session keys are always redirected to sessionStorage.
   const nativeStorageSetItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function(key, value) {
     if (this === localStorage && protectedStorageKeys.has(String(key))) {
@@ -63,7 +61,7 @@ window.APP_CONFIG = {
     expiryTimer = null;
   }
   function tokenExpiresAt(token) {
-    if (!token || typeof token !== "string" || !token.includes(".")) return null;
+    if (!token || token === COOKIE_SENTINEL || typeof token !== "string" || !token.includes(".")) return null;
     try {
       const encoded = token.split(".", 1)[0].replace(/-/g, "+").replace(/_/g, "/");
       const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4);
@@ -97,7 +95,7 @@ window.APP_CONFIG = {
     if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = null;
     const session = read();
-    if (!session?.token) return;
+    if (!session?.token || session.token === COOKIE_SENTINEL) return;
     const expiresAt = tokenExpiresAt(session.token);
     if (!expiresAt) return;
     const remaining = expiresAt - Date.now();
@@ -129,15 +127,33 @@ window.APP_CONFIG = {
   }
 
   const initial = read();
-  if (initial?.token && !initial.token.includes(".")) clear(); else if (initial?.token) {
+  if (initial?.token && initial.token !== COOKIE_SENTINEL && !initial.token.includes(".")) clear();
+  else if (initial?.token && initial.token !== COOKIE_SENTINEL) {
     const expiresAt = tokenExpiresAt(initial.token);
     if (expiresAt && expiresAt <= Date.now()) clear();
   }
   if (!read()) sessionStorage.removeItem(RELOAD_KEY);
   scheduleExpiry();
-  window.LVGSession = { read, clear, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount };
 
   const nativeFetch = window.fetch.bind(window);
+  async function cookieProbe() {
+    try {
+      const response = await nativeFetch(`${API_BASE}/api/store/me`, { method:"GET", credentials:"include", cache:"no-store", headers:{"Accept":"application/json"} });
+      return response.ok;
+    } catch { return false; }
+  }
+  async function preferSecureCookie(response, url) {
+    if (!url.includes("/api/store/auth/login") || !response.ok) return response;
+    const payload = await response.clone().json().catch(() => null);
+    if (!payload?.data?.token) return response;
+    if (!await cookieProbe()) return response;
+    payload.data.token = COOKIE_SENTINEL;
+    payload.data.sessionMode = "secure-cookie";
+    const headers = new Headers(response.headers);
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    headers.set("Cache-Control", "no-store");
+    return new Response(JSON.stringify(payload), { status:response.status, statusText:response.statusText, headers });
+  }
   function inspectResponse(response, url, authenticated) {
     try {
       if (response.status === 401 && authenticated) queueMicrotask(() => invalidate("server-unauthorized"));
@@ -150,7 +166,7 @@ window.APP_CONFIG = {
   async function fetchMeWithTimeout(input, init, url, authenticated) {
     const existingSignal = init?.signal || (typeof Request !== "undefined" && input instanceof Request ? input.signal : null);
     const controller = existingSignal ? null : new AbortController();
-    const requestInit = controller ? { ...(init || {}), signal: controller.signal, cache:"no-store" } : { ...(init || {}), cache:"no-store" };
+    const requestInit = { ...(init || {}), credentials:"include", cache:"no-store", ...(controller?{signal:controller.signal}:{}) };
     const timeout = controller ? setTimeout(() => controller.abort(), 8000) : null;
     try {
       const response = await nativeFetch(input, requestInit);
@@ -162,12 +178,14 @@ window.APP_CONFIG = {
       throw error;
     } finally { if (timeout) clearTimeout(timeout); }
   }
+
   window.fetch = async function(input, init) {
     const url = typeof input === "string" ? input : input?.url || "";
     const method = String(init?.method || (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
     let headers;
     try { headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined)); } catch { headers = new Headers(); }
-    const authenticated = url.startsWith(API_BASE) && headers.has("Authorization");
+    const isApi = url.startsWith(API_BASE);
+    const authenticated = isApi && (headers.has("Authorization") || read()?.token === COOKIE_SENTINEL);
     const isMeRequest = authenticated && method === "GET" && url.includes("/api/store/me");
     if (isMeRequest) {
       if (!inflightMe) {
@@ -180,32 +198,36 @@ window.APP_CONFIG = {
       const template = await inflightMe;
       return template.clone();
     }
-    const requestInit = authenticated ? { ...(init || {}), cache:"no-store" } : init;
-    const response = await nativeFetch(input, requestInit);
+
+    const requestInit = isApi ? { ...(init || {}), credentials:"include", ...(authenticated?{cache:"no-store"}:{}) } : init;
+    let response = await nativeFetch(input, requestInit);
+    response = await preferSecureCookie(response, url);
     inspectResponse(response, url, authenticated);
     return response;
   };
 
+  async function logout() {
+    try { await nativeFetch(`${API_BASE}/api/store/auth/logout`, { method:"POST", credentials:"include", cache:"no-store", keepalive:true }); } catch {}
+    clear();
+  }
+
+  window.LVGSession = { read, clear, logout, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount, cookieSentinel:COOKIE_SENTINEL };
   window.addEventListener("storage", event => {
-    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) {
-      clear();
-      refreshLoggedOutUi();
-    }
+    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) { clear(); refreshLoggedOutUi(); }
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleExpiry(); });
-  document.addEventListener("DOMContentLoaded", () => {
-    const remember = document.getElementById("serverRemember");
-    remember?.closest("label")?.remove();
-  });
+  const removeRemember = () => document.getElementById("serverRemember")?.closest("label")?.remove();
+  document.addEventListener("DOMContentLoaded", removeRemember);
+  new MutationObserver(removeRemember).observe(document.documentElement,{childList:true,subtree:true});
   const hadSessionAtBoot = !!initial?.token;
   if (hadSessionAtBoot) setTimeout(() => { if (!read() && !sessionStorage.getItem(RELOAD_KEY)) refreshLoggedOutUi(); }, 2500);
 })();
 
 const serverWalletGuardStyle = document.createElement("style");
-serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
+serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-0256-security-dashboard";
+const version = "20260809-0305-cookie-dashboard";
 function loadScript(path) { const script=document.createElement("script"); script.src=`${path}?v=${version}`; script.async=false; document.head.appendChild(script); }
 loadScript("./modal-safety.js");
 loadScript("./registration-flow.js");
