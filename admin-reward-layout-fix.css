@@ -1,0 +1,11 @@
+.admin-page,.admin-shell,.admin-main,.admin-content,#rewardRulesPanel,.reward-admin-grid,.reward-card,.reward-form,.reward-two,.reward-three,.reward-key-form{min-width:0;max-width:100%;box-sizing:border-box}
+#rewardRulesPanel{overflow-x:hidden}
+.reward-admin-grid{width:100%!important;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr)!important}
+.reward-admin-grid>*,.reward-card>*,.reward-form>*,.reward-two>*,.reward-three>*{min-width:0}
+.reward-top{min-width:0;flex-wrap:wrap}
+.reward-top>div:first-child{min-width:0;flex:1 1 260px}
+.reward-meta,.reward-key,.reward-secret{overflow-wrap:anywhere;word-break:break-word}
+.reward-meta code,.reward-secret code{white-space:normal;overflow-wrap:anywhere;word-break:break-all}
+.reward-toolbar select,.reward-key-form input,.reward-key-form select,.reward-form input,.reward-form select{min-width:0;max-width:100%}
+@media(max-width:1280px){.reward-admin-grid{grid-template-columns:1fr!important}}
+@media(max-width:760px){.reward-two,.reward-three,.reward-key-form{grid-template-columns:1fr!important}}
