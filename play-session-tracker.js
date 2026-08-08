@@ -4,13 +4,18 @@
   const API = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
   const gameSlug = new URLSearchParams(location.search).get("id") || "";
   const LEASE_EXPIRE_MS = 5 * 60 * 1000;
+  const FOCUS_GRACE_MS = 15 * 1000;
+
   let playSession = null;
   let checkpointTimer = null;
   let ending = false;
   let starting = false;
   let gameplayRequested = false;
+  let trustedStartGranted = false;
   let lastLeaseAt = 0;
   let retryTimer = null;
+  let focusTimer = null;
+  let gateInstalled = false;
 
   function readSession() {
     if (window.LVGSession?.read) return window.LVGSession.read();
@@ -20,14 +25,62 @@
     return null;
   }
 
+  function iframe() { return document.querySelector(".play-shell iframe"); }
+  function iframeOrigin() {
+    const frame = iframe();
+    if (!frame?.src) return null;
+    try { return new URL(frame.src, location.href).origin; } catch { return null; }
+  }
+  function validFrameMessage(event) {
+    const frame = iframe();
+    const origin = iframeOrigin();
+    return !!frame && !!origin && event.source === frame.contentWindow && event.origin === origin;
+  }
+
+  function installStartGate() {
+    if (gateInstalled) return true;
+    const frame = iframe();
+    if (!frame?.parentElement) return false;
+    const host = frame.parentElement;
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+
+    const gate = document.createElement("div");
+    gate.id = "lvgTrustedPlayGate";
+    gate.style.cssText = "position:absolute;inset:0;z-index:20;display:grid;place-items:center;background:linear-gradient(135deg,rgba(18,5,7,.94),rgba(5,5,8,.9));backdrop-filter:blur(5px);";
+    gate.innerHTML = '<button type="button" style="border:1px solid rgba(233,190,92,.65);background:linear-gradient(135deg,#b51624,#741019);color:#fff5d7;border-radius:14px;padding:14px 24px;font:700 15px/1.2 inherit;cursor:pointer;box-shadow:0 12px 34px rgba(181,22,36,.28)">Bắt đầu chơi</button>';
+    const button = gate.querySelector("button");
+    button?.addEventListener("click", event => {
+      if (!event.isTrusted) return;
+      trustedStartGranted = true;
+      gate.remove();
+      if (gameplayRequested) startSession();
+    });
+    host.appendChild(gate);
+    gateInstalled = true;
+    return true;
+  }
+
+  function ensureStartGate() {
+    if (installStartGate()) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (installStartGate() || attempts >= 80) clearInterval(timer);
+    }, 100);
+  }
+
+  function foregroundActive() {
+    return !document.hidden && document.hasFocus();
+  }
+
   function scheduleRetry() {
     clearTimeout(retryTimer);
-    if (!gameplayRequested || playSession || starting) return;
+    if (!gameplayRequested || !trustedStartGranted || playSession || starting || !foregroundActive()) return;
     retryTimer = setTimeout(() => startSession(), 4000);
   }
 
   async function startSession() {
-    if (!gameplayRequested || starting || playSession || !gameSlug) return;
+    if (!gameplayRequested || !trustedStartGranted || starting || playSession || !gameSlug || !foregroundActive()) return;
     const account = readSession();
     if (!account?.token) { scheduleRetry(); return; }
     starting = true;
@@ -48,8 +101,7 @@
       window.LVGPlaySession = playSession;
       scheduleCheckpoint(Number(playSession.checkpointSeconds || 120));
       window.dispatchEvent(new CustomEvent("lvg:play-session-started", { detail: playSession }));
-    } catch (error) {
-      console.warn("LacVietGames play session start failed", error);
+    } catch {
       scheduleRetry();
     } finally {
       starting = false;
@@ -63,7 +115,7 @@
   }
 
   async function restartExpiredLease() {
-    if (!gameplayRequested) return false;
+    if (!gameplayRequested || !trustedStartGranted || !foregroundActive()) return false;
     if (!playSession) { await startSession(); return true; }
     if (Date.now() - lastLeaseAt <= LEASE_EXPIRE_MS) return false;
     clearInterval(checkpointTimer);
@@ -74,7 +126,7 @@
   }
 
   async function checkpoint() {
-    if (!gameplayRequested || !playSession || ending || document.hidden) return;
+    if (!gameplayRequested || !trustedStartGranted || !playSession || ending || !foregroundActive()) return;
     if (await restartExpiredLease()) return;
     try {
       const response = await fetch(`${API}/api/store/play-sessions/checkpoint`, {
@@ -95,9 +147,9 @@
     } catch {}
   }
 
-  async function endSession({ returnToStore = false, beacon = false } = {}) {
+  async function endSession({ returnToStore = false, beacon = false, preserveIntent = false } = {}) {
     clearTimeout(retryTimer);
-    gameplayRequested = false;
+    if (!preserveIntent) gameplayRequested = false;
 
     if (!playSession || ending) {
       if (returnToStore) location.href = `./game.html?id=${encodeURIComponent(gameSlug)}`;
@@ -135,7 +187,12 @@
 
   function gameplayStart() {
     gameplayRequested = true;
-    startSession();
+    if (trustedStartGranted) startSession();
+  }
+
+  function pauseForeground() {
+    if (!playSession) return;
+    endSession({ preserveIntent: true });
   }
 
   window.LVGPlayTracker = {
@@ -146,20 +203,28 @@
   };
 
   window.addEventListener("message", event => {
-    const iframe = document.querySelector(".play-shell iframe");
-    if (!iframe || event.source !== iframe.contentWindow) return;
+    if (!validFrameMessage(event)) return;
     const type = event.data?.type;
     if (type === "LVG_GAMEPLAY_START") gameplayStart();
     if (type === "LVG_GAMEPLAY_END") endSession();
     if (type === "LVG_RETURN_TO_STORE") endSession({ returnToStore: true });
   });
 
+  window.addEventListener("blur", () => {
+    clearTimeout(focusTimer);
+    focusTimer = setTimeout(() => { if (!document.hasFocus()) pauseForeground(); }, FOCUS_GRACE_MS);
+  });
+  window.addEventListener("focus", () => {
+    clearTimeout(focusTimer);
+    if (gameplayRequested && trustedStartGranted) startSession();
+  });
   window.addEventListener("pagehide", () => endSession({ beacon: true }));
   window.addEventListener("beforeunload", () => endSession({ beacon: true }));
-  window.addEventListener("lvg:session-hydrated", () => { if (gameplayRequested) startSession(); });
-  document.addEventListener("visibilitychange", async () => {
-    if (document.hidden || !gameplayRequested) return;
-    if (!playSession) await startSession();
-    else await restartExpiredLease();
+  window.addEventListener("lvg:session-hydrated", () => { if (gameplayRequested && trustedStartGranted) startSession(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseForeground();
+    else if (gameplayRequested && trustedStartGranted) startSession();
   });
+
+  ensureStartGate();
 })();
