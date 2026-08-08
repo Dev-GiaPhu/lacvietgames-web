@@ -56,7 +56,7 @@
     const all=e.target.closest("[data-v2-read-all]");
     if(all){e.preventDefault();e.stopPropagation();all.disabled=true;await api("/api/store/notifications/read-all",{method:"POST"}).catch(()=>null);updateBadge(0);const panel=all.closest(".server-notifications");if(panel)await render(panel);window.dispatchEvent(new CustomEvent("lvg:notification-updated"));return}
     const item=e.target.closest("[data-v2-notification]");
-    if(item){const href=item.getAttribute("href");await api(`/api/store/notifications/${item.dataset.v2Notification}/read`,{method:"POST"}).catch(()=>null);item.classList.remove("unread");const panel=item.closest(".server-notifications");if(panel){const unread=panel.querySelectorAll(".server-notification.unread").length;updateBadge(unread);panel.hidden=true}if(!href||href==="#")e.preventDefault();return}
+    if(item){e.preventDefault();e.stopPropagation();const href=item.getAttribute("href")||"#";await api(`/api/store/notifications/${item.dataset.v2Notification}/read`,{method:"POST"}).catch(()=>null);item.classList.remove("unread");const panel=item.closest(".server-notifications");if(panel){const unread=panel.querySelectorAll(".server-notification.unread").length;updateBadge(unread);panel.hidden=true}if(href&&href!=="#")location.href=href;return}
     document.querySelectorAll(".server-notifications:not([hidden])").forEach(panel=>panel.hidden=true);
   },true);
 })();
