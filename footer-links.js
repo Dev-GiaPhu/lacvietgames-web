@@ -1,3 +1,13 @@
+(() => {
+  if (!document.querySelector('link[data-lvg-premium-theme]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = './premium-theme.css?v=20260809-0224';
+    link.dataset.lvgPremiumTheme = '1';
+    document.head.appendChild(link);
+  }
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
   const supportLinks = {
     "Trung tâm trợ giúp": "./help.html",
