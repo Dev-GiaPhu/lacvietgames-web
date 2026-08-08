@@ -1,65 +1,147 @@
-# LacVietGames WebGL SDK
+# LacVietGames Unity SDK 1.1
 
-## Hướng dẫn đầy đủ
+## Cài đặt
 
-https://dev-giaphu.github.io/lacvietgames-web/sdk-guide.html
+Unity Package Manager → **Add package from git URL**:
 
-## Cài đặt nhanh
-
-1. Sau khi Admin duyệt tích hợp, Publisher Center hiển thị **Integration ID** và **Unity Package Git URL**.
-2. Unity → **Window → Package Manager → + → Add package from git URL...**.
-3. Dán URL package.
-4. Mở scene khởi động đầu tiên của game.
-5. Unity → **Tools → LacVietGames → Setup**.
-6. Dán Integration ID dạng `lvg_int_...`, chọn đúng cấu trúc game và bấm **Setup SDK in Current Scene**.
-
-Chỉ Setup một scene. Object `LacVietGames` dùng `DontDestroyOnLoad` và sống xuyên các scene còn lại.
-
-## Tài khoản người chơi tự đồng bộ từ website
-
-Không cần tạo form Email/Mật khẩu và không cần gọi `RequestLogin()` trong luồng bình thường.
-
-Khi WebGL chạy từ LacVietGames:
-
-- Nếu người chơi đã đăng nhập website, SDK tự nhận account và ví.
-- Nếu người chơi chưa đăng nhập, website LacVietGames tự mở bảng đăng nhập.
-- Sau khi đăng nhập thành công, Unity tự nhận `AccountId`, `DisplayName` và `CoinBalance`.
-- Unity không nhận password hoặc bearer token.
-
-`RequestLogin()` vẫn được giữ làm fallback nếu game muốn có nút đăng nhập thủ công riêng.
-
-## Gameplay
-
-Game có Boot/Main Menu:
-
-```csharp
-LacVietGamesBridge.Instance.GameplayStarted();
+```text
+https://github.com/Dev-GiaPhu/lacvietgames-web.git?path=/sdk/unity-package#main
 ```
 
-gọi khi người chơi thực sự bắt đầu chơi, và:
+Sau đó mở `Tools > LacVietGames > Setup`, dán Integration ID của đúng game và chạy Setup.
+
+## API nhanh
+
+### Account
 
 ```csharp
-LacVietGamesBridge.Instance.GameplayEnded();
+LVG.Account.Login();
+bool loggedIn = LVG.Account.IsLoggedIn;
+int accountId = LVG.Account.Id;
+string displayName = LVG.Account.DisplayName;
+LVG.Account.Updated += account => { };
 ```
 
-gọi khi trận kết thúc/quay lại menu.
+Game production không nhận mật khẩu hoặc bearer token của website.
 
-Nếu game mở thẳng vào gameplay, chọn tùy chọn đó trong Setup Wizard; SDK tự bật Auto Start Gameplay.
-
-PlayTime reward được LacVietGames server tính thời gian. Không truyền phút chơi hoặc số coin từ Unity.
-
-## Reward nhỏ
-
-Có thể dùng `LacVietGamesRewardTrigger` trong Inspector hoặc:
+### Wallet
 
 ```csharp
-LacVietGamesBridge.Instance.ClaimReward("quest_complete");
+LVG.Wallet.Refresh();
+long balance = LVG.Wallet.Balance;
+LVG.Wallet.BalanceChanged += balance => { };
+
+LVG.Wallet.RefreshTransactions(30);
+LvgGameTransaction[] transactions = LVG.Wallet.Transactions;
+LVG.Wallet.TransactionsUpdated += items => { };
 ```
 
-Unity chỉ gửi Event Key. Số Lạc Coin, cooldown và giới hạn do server/Admin quyết định.
+`RefreshTransactions` chỉ trả các giao dịch thuộc đúng account + game hiện tại. SDK không có `AddCoin`, `SetBalance` hoặc API cho client tự chọn số Lạc Coin.
 
-## ServerVerified
+### Playtime
 
-Nếu Admin bật `ServerVerified`, game có thể gọi `RequestGameIdentityToken()`. Identity Token không có quyền cộng coin. Nó phải được gửi tới backend tin cậy của game; backend đó xác minh kết quả thật rồi mới gọi LacVietGames ServerVerified API bằng Game Server Key lưu trong secret manager/server environment.
+```csharp
+LVG.Playtime.Start();
+LVG.Playtime.End();
 
-Không bao giờ đặt Game Server Key, R2 key, bearer token hoặc password trong Unity/WebGL.
+LVG.Playtime.Refresh();
+long totalSeconds = LVG.Playtime.TotalSeconds;
+DateTime? firstPlay = LVG.Playtime.FirstPlayedAtUtc;
+DateTime? currentStart = LVG.Playtime.CurrentSessionStartedAtUtc;
+DateTime? lastStart = LVG.Playtime.LastSessionStartedAtUtc;
+DateTime? lastExit = LVG.Playtime.LastExitAtUtc;
+int lastDuration = LVG.Playtime.LastSessionDurationSeconds;
+
+LVG.Playtime.RefreshSessions(20);
+LvgPlaySessionInfo[] history = LVG.Playtime.Sessions;
+```
+
+Thời gian server là nguồn dữ liệu thật. Unity không gửi `totalPlayTime` tự khai báo.
+
+### Entitlement
+
+```csharp
+LVG.Entitlement.Refresh();
+bool owned = LVG.Entitlement.IsOwned;
+LVG.Entitlement.Updated += value => { };
+```
+
+### Game Stats
+
+Stat được cấu hình riêng cho từng game bởi LacVietGames Admin.
+
+```csharp
+LVG.Stats.Refresh();
+LVG.Stats.Updated += stats => { };
+
+LVG.Stats.Submit("high_score", 128500);
+LVG.Stats.Submitted += result => { };
+```
+
+`ClientCapped` được backend kiểm tra active play session, request ID chống gửi trùng, khoảng giá trị, max delta, cooldown và aggregation. Điểm competitive/có giải thưởng không nên dùng ClientCapped làm nguồn xác minh cuối cùng.
+
+### Leaderboards
+
+```csharp
+LVG.Leaderboards.Get("high_score", 50);
+LVG.Leaderboards.GetAroundMe("high_score", 5);
+
+LVG.Leaderboards.Updated += board =>
+{
+    foreach (var row in board.entries)
+        Debug.Log($"#{row.rank} {row.displayName}: {row.score}");
+};
+
+LVG.Leaderboards.Submit("high_score", 128500);
+```
+
+Leaderboard có thể lấy từ:
+
+- `GameStat`: stat riêng của game.
+- `PlayTimeTotal`: tổng thời gian đã được server chốt, client không gửi score.
+
+Leaderboard chỉ xuất `DisplayName` và `playerId` giả danh riêng theo game. Không xuất email, số dư ví, credential hoặc account ID toàn cục.
+
+### Rewards
+
+```csharp
+LVG.Rewards.Claim("quest_daily_1");
+LVG.Rewards.Completed += reward => { };
+```
+
+Event key không chứa số coin. Reward amount và limits do backend quyết định.
+
+### ServerVerified
+
+```csharp
+LVG.Security.RequestGameIdentity();
+LVG.Security.IdentityReceived += identity => { };
+```
+
+Identity token được gửi tới backend tin cậy của game nếu game có ServerVerified. **Game Server Key không bao giờ được đặt trong Unity/WebGL**.
+
+### Store
+
+```csharp
+LVG.ReturnToStore();
+```
+
+## Capability theo từng game
+
+```text
+account.basic
+account.email
+wallet.balance
+wallet.transactions
+entitlement.read
+playtime.read
+rewards.playtime
+rewards.client
+rewards.server_verified
+stats.read
+stats.write.client
+leaderboard.read
+leaderboard.submit.client
+```
+
+Mỗi game có Integration ID và quyền riêng. Integration ID là định danh công khai, không phải credential. Backend kiểm tra lại capability ở mọi API được bảo vệ.
