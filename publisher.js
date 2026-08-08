@@ -1,35 +1,687 @@
 (() => {
-  const apiBase=(window.APP_CONFIG?.API_BASE_URL||"").replace(/\/$/,"");
-  const byId=id=>document.getElementById(id);const esc=(v="")=>String(v).replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));const fmt=n=>Number(n||0).toLocaleString("vi-VN");
-  let submissions=[];let media=[];
-  const readSession=()=>{if(window.LVGSession?.read)return window.LVGSession.read();for(const s of[localStorage,sessionStorage]){try{const raw=s.getItem("lacvietgamesStoreSession");if(raw)return JSON.parse(raw)}catch{}}return null};
-  async function api(path,options={}){const s=readSession();if(!s?.token)throw Object.assign(new Error("Bạn cần đăng nhập."),{status:401});const res=await fetch(`${apiBase}${path}`,{method:options.method||"GET",headers:{"Content-Type":"application/json",Authorization:`Bearer ${s.token}`},body:options.body?JSON.stringify(options.body):undefined});const p=await res.json().catch(()=>null);if(!res.ok||p?.success===false)throw Object.assign(new Error(p?.message||"Không thể xử lý yêu cầu."),{status:res.status,code:p?.code});return p}
-  function status(message="",error=false){const el=byId("publisherStatus");if(!el)return;el.textContent=message;el.classList.toggle("error",error)}
-  function syncType(){const web=byId("gameType").value==="web";byId("playUrlLabel").hidden=!web;byId("downloadUrlLabel").hidden=web;if(!byId("reqOs").value)byId("reqOs").value=web?"Trình duyệt hiện đại":"Windows 10";if(!byId("reqCpu").value)byId("reqCpu").value=web?"Bất kỳ":"Intel i5 hoặc tương đương";if(!byId("reqRam").value)byId("reqRam").value=web?"2 GB":"8 GB";if(!byId("reqGpu").value)byId("reqGpu").value=web?"WebGL":"GTX 1050 hoặc tương đương";if(!byId("reqStorage").value)byId("reqStorage").value=web?"Không cần cài đặt":"2 GB"}
+  if (document.body?.dataset.page !== 'publisher') return;
 
-  function addMedia(item={type:"image",url:"",thumbnailUrl:"",sortOrder:media.length}){media.push({...item,sortOrder:item.sortOrder??media.length});renderMedia()}
-  function renderMedia(){const root=byId("mediaBuilder");root.innerHTML=media.map((m,i)=>`<div class="media-item" data-media-index="${i}"><select data-media-type><option value="image" ${m.type==="image"?"selected":""}>Ảnh</option><option value="video" ${m.type==="video"?"selected":""}>Video</option></select><div><input data-media-url type="url" value="${esc(m.url||"")}" placeholder="https://..."><div class="media-upload"><input data-media-file type="file" accept="image/*,video/*"><button class="mini-btn" type="button" data-upload-media="${i}">Upload trực tiếp R2</button></div><div class="media-preview">${previewHtml(m)}</div></div><button class="mini-btn" type="button" data-remove-media="${i}">Xóa</button></div>`).join("")||'<div class="portal-empty">Chưa có media. Thêm ít nhất 3 ảnh.</div>'}
-  function previewHtml(m){if(!m.url)return"Chưa có URL";if(m.type==="video")return`<video src="${esc(m.url)}" muted controls></video><span>Video</span>`;return`<img src="${esc(m.url)}" alt="preview"><span>Ảnh</span>`}
-  function syncMediaFromDom(){document.querySelectorAll("[data-media-index]").forEach(row=>{const i=Number(row.dataset.mediaIndex);if(!media[i])return;media[i].type=row.querySelector("[data-media-type]").value;media[i].url=row.querySelector("[data-media-url]").value.trim();media[i].sortOrder=i})}
-  async function uploadFileDirect(file,area){if(!file)throw new Error("Hãy chọn file trước.");const ticket=await api("/api/store/uploads/presign",{method:"POST",body:{fileName:file.name,contentType:file.type||"application/octet-stream",area}});const d=ticket.data||{};const res=await fetch(d.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});if(!res.ok)throw new Error(`R2 từ chối upload (${res.status}). Kiểm tra CORS bucket.`);return d}
-  async function uploadMedia(index){const row=document.querySelector(`[data-media-index="${index}"]`);const file=row?.querySelector("[data-media-file]")?.files?.[0];if(!file)return status("Hãy chọn file ảnh/video trước.",true);const btn=row.querySelector("[data-upload-media]");const old=btn.textContent;btn.disabled=true;btn.textContent="Đang upload...";try{const ticket=await uploadFileDirect(file,"game-media");if(!ticket.publicUrl)throw new Error("R2 đã nhận file nhưng chưa cấu hình PublicBaseUrl cho media.");media[index].type=file.type.startsWith("video/")?"video":"image";media[index].url=ticket.publicUrl;renderMedia();status("Upload media thành công. File đi trực tiếp từ trình duyệt lên R2.")}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
-  async function uploadBuild(){const file=byId("downloadFile").files?.[0];const btn=byId("uploadDownloadFile");if(!file)return status("Hãy chọn file build trước.",true);const old=btn.textContent;btn.disabled=true;btn.textContent="Đang upload build...";try{const ticket=await uploadFileDirect(file,"game-builds");byId("downloadUrl").value=`r2:${ticket.objectKey}`;status("Build đã upload trực tiếp R2. Backend chỉ lưu object key.")}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
+  const apiBase = (window.APP_CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
+  const $ = id => document.getElementById(id);
+  const esc = (v = '') => String(v).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+  const fmt = n => Number(n || 0).toLocaleString('vi-VN');
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  function collectPayload(){syncMediaFromDom();const images=media.filter(m=>m.type==="image"&&/^https?:\/\//i.test(m.url));if(images.length<3)throw new Error("Mỗi game cần ít nhất 3 ảnh. Hãy thêm ảnh bằng URL hoặc upload R2.");const type=byId("gameType").value;return{name:byId("gameName").value.trim(),publisherName:byId("publisherName").value.trim(),type,priceCoins:Number(byId("priceCoins").value||0),shortDescription:byId("shortDescription").value.trim(),description:byId("description").value.trim(),coverUrl:byId("coverUrl").value.trim(),icon:byId("gameIcon").value.trim()||"🎮",badge:byId("badge").value.trim(),theme:byId("theme").value.trim()||"default",playUrl:type==="web"?byId("playUrl").value.trim():"",downloadUrl:type==="download"?byId("downloadUrl").value.trim():"",releaseDate:byId("releaseDate").value||null,tags:byId("tags").value.split(",").map(v=>v.trim()).filter(Boolean),media:media.map((m,i)=>({type:m.type,url:m.url,thumbnailUrl:m.thumbnailUrl||null,sortOrder:i})),versionName:byId("versionName").value.trim()||"1.0.0",changelog:byId("changelog").value.trim()||"Cập nhật game",recommendedOs:byId("reqOs").value.trim(),recommendedCpu:byId("reqCpu").value.trim(),recommendedRam:byId("reqRam").value.trim(),recommendedGpu:byId("reqGpu").value.trim(),recommendedStorage:byId("reqStorage").value.trim()}}
-  function resetForm(){const form=byId("gameSubmissionForm");form.reset();byId("editPublisherGameId").value="";byId("publisherFormTitle").textContent="Gửi game mới";byId("cancelEditGame").hidden=true;byId("submitGameButton").textContent="Gửi game để Admin duyệt";byId("publisherName").value=readSession()?.effectiveDisplayName||readSession()?.displayName||readSession()?.name||"";byId("gameType").value="web";byId("gameIcon").value="🎮";byId("theme").value="default";byId("versionName").value="1.0.0";byId("changelog").value="Bản phát hành đầu tiên";byId("reqOs").value="";byId("reqCpu").value="";byId("reqRam").value="";byId("reqGpu").value="";byId("reqStorage").value="";media=[];addMedia();addMedia();addMedia();syncType();status("")}
+  let submissions = [];
+  let media = [];
+  let downloadMode = 'file';
+  let versionDownloadMode = 'file';
+  let editingOriginalMediaUrls = [];
+  let editingOriginalDownloadUrl = '';
+  let submitLocked = false;
 
-  async function submitGame(event){event.preventDefault();const form=event.currentTarget;const btn=byId("submitGameButton");const old=btn.textContent;btn.disabled=true;btn.textContent="Đang gửi...";try{const payload=collectPayload();const id=Number(byId("editPublisherGameId").value||0);const result=await api(id?`/api/store/publisher/games/${id}`:"/api/store/publisher/games",{method:id?"PUT":"POST",body:payload});status(result.message||"Đã lưu game.");resetForm();await Promise.all([loadSubmissions(),loadAnalytics()])}catch(e){status(e.message,true)}finally{btn.disabled=false;btn.textContent=old}}
-  function editGame(id){const item=submissions.find(x=>Number(x.game?.id)===Number(id));if(!item)return;const g=item.game;byId("editPublisherGameId").value=g.id;byId("publisherFormTitle").textContent=`Sửa: ${g.name}`;byId("cancelEditGame").hidden=false;byId("submitGameButton").textContent="Lưu & gửi lại để duyệt";byId("gameName").value=g.name||"";byId("publisherName").value=g.publisherName||"";byId("gameType").value=g.type||"web";byId("priceCoins").value=g.originalPriceCoins??g.priceCoins??0;byId("shortDescription").value=g.shortDescription||"";byId("description").value=g.description||"";byId("coverUrl").value=g.coverUrl||"";byId("gameIcon").value=g.icon||"🎮";byId("badge").value=g.badge||"";byId("theme").value=g.theme||"default";byId("playUrl").value=g.playUrl||"";byId("downloadUrl").value=g.downloadUrl||"";byId("releaseDate").value=g.releaseDate?String(g.releaseDate).slice(0,10):"";byId("tags").value=(g.tags||[]).join(", ");byId("reqOs").value=g.requirements?.os||"";byId("reqCpu").value=g.requirements?.cpu||"";byId("reqRam").value=g.requirements?.ram||"";byId("reqGpu").value=g.requirements?.gpu||"";byId("reqStorage").value=g.requirements?.storage||"";media=(item.media||[]).map((m,i)=>({type:m.type,url:m.url,thumbnailUrl:m.thumbnailUrl||"",sortOrder:i}));while(media.length<3)addMedia({type:"image",url:"",sortOrder:media.length});renderMedia();syncType();window.scrollTo({top:0,behavior:"smooth"})}
-  async function resubmit(id){try{const r=await api(`/api/store/publisher/games/${id}/resubmit`,{method:"POST"});status(r.message);await loadSubmissions()}catch(e){status(e.message,true)}}
-  function openVersion(id){byId("versionGameId").value=id;byId("newVersionName").value="";byId("newVersionChangelog").value="";byId("newVersionPlayUrl").value="";byId("newVersionDownloadUrl").value="";byId("versionStatus").textContent="";byId("versionModal").hidden=false;document.body.style.overflow="hidden"}
-  function closeVersion(){byId("versionModal").hidden=true;document.body.style.overflow=""}
-  async function submitVersion(event){event.preventDefault();const id=Number(byId("versionGameId").value);const btn=event.currentTarget.querySelector('button[type="submit"]');btn.disabled=true;try{const r=await api(`/api/store/publisher/games/${id}/versions`,{method:"POST",body:{versionName:byId("newVersionName").value.trim(),changelog:byId("newVersionChangelog").value.trim(),playUrl:byId("newVersionPlayUrl").value.trim()||null,downloadUrl:byId("newVersionDownloadUrl").value.trim()||null}});byId("versionStatus").textContent=r.message;setTimeout(()=>{closeVersion();loadSubmissions()},500)}catch(e){byId("versionStatus").textContent=e.message;byId("versionStatus").classList.add("error")}finally{btn.disabled=false}}
+  function readSession() {
+    if (window.LVGSession?.read) return window.LVGSession.read();
+    for (const storage of [localStorage, sessionStorage]) {
+      try {
+        const raw = storage.getItem('lacvietgamesStoreSession');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return null;
+  }
 
-  async function loadAnalytics(){try{const r=await api("/api/store/publisher/analytics");const d=r.data||{};byId("pubTotal").textContent=fmt(d.totalGames);byId("pubPublished").textContent=fmt(d.published);byId("pubPending").textContent=fmt(d.pending);byId("pubPurchases").textContent=fmt(d.purchases);byId("pubRevenue").textContent=`${fmt(d.revenueCoins)} LC`}catch{}}
-  async function loadSubmissions(){const list=byId("submissionList");list.innerHTML='<div class="portal-empty">Đang tải...</div>';try{const r=await api("/api/store/publisher/games");submissions=r.data||[];list.innerHTML=submissions.length?submissions.map(x=>{const g=x.game||x;const versions=x.versions||[];return`<article class="publisher-game-card"><div class="submission-top"><div><h3>${esc(g.icon||"🎮")} ${esc(g.name)}</h3><div class="meta">${esc(g.type)} · ${fmt(g.priceCoins)} LC · ${(x.media||[]).length} media</div></div><span class="status-chip ${String(g.status).toLowerCase()}">${esc(g.status)}</span></div>${g.rejectionReason?`<p style="color:#ff9dab">Lý do: ${esc(g.rejectionReason)}</p>`:""}<div class="version-list">${versions.length?`Version: ${versions.slice(0,3).map(v=>`${esc(v.version)} (${esc(v.status)})`).join(" · ")}`:"Chưa có version"}</div><div class="publisher-game-actions">${g.status!=="Published"?`<button class="mini-btn" data-edit-publisher-game="${g.id}">Sửa game</button>`:""}${g.status==="Rejected"?`<button class="mini-btn primary" data-resubmit="${g.id}">Gửi lại</button>`:""}${g.status==="Published"?`<button class="mini-btn primary" data-new-version="${g.id}">+ Version mới</button>`:""}</div></article>`}).join(""):'<div class="portal-empty">Bạn chưa gửi game nào.</div>'}catch(e){list.innerHTML=`<div class="portal-empty" style="color:#ff9dab">${esc(e.message)}</div>`}}
-  async function boot(){const s=readSession();byId("publisherLoginRequired").hidden=!!s?.token;byId("publisherContent").hidden=!s?.token;if(!s?.token)return;resetForm();await Promise.all([loadAnalytics(),loadSubmissions()])}
+  async function api(path, options = {}) {
+    const session = readSession();
+    if (!session?.token) throw Object.assign(new Error('Bạn cần đăng nhập.'), { status: 401 });
+    const response = await fetch(`${apiBase}${path}`, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.success === false) {
+      throw Object.assign(new Error(payload?.message || 'Không thể xử lý yêu cầu.'), { status: response.status, code: payload?.code });
+    }
+    return payload;
+  }
 
-  byId("gameType").addEventListener("change",()=>{byId("reqOs").value="";byId("reqCpu").value="";byId("reqRam").value="";byId("reqGpu").value="";byId("reqStorage").value="";syncType()});byId("addMedia").addEventListener("click",()=>addMedia());byId("uploadDownloadFile").addEventListener("click",uploadBuild);byId("gameSubmissionForm").addEventListener("submit",submitGame);byId("refreshSubmissions").addEventListener("click",()=>Promise.all([loadAnalytics(),loadSubmissions()]));byId("cancelEditGame").addEventListener("click",resetForm);byId("versionForm").addEventListener("submit",submitVersion);byId("versionModal").addEventListener("click",e=>{if(e.target.closest("[data-close-version]"))closeVersion()});
-  document.addEventListener("input",e=>{const row=e.target.closest("[data-media-index]");if(row&&(e.target.matches("[data-media-url]")||e.target.matches("[data-media-type]"))){syncMediaFromDom();const i=Number(row.dataset.mediaIndex);row.querySelector(".media-preview").innerHTML=previewHtml(media[i])}});document.addEventListener("click",e=>{const upload=e.target.closest("[data-upload-media]");if(upload)return uploadMedia(Number(upload.dataset.uploadMedia));const remove=e.target.closest("[data-remove-media]");if(remove){media.splice(Number(remove.dataset.removeMedia),1);renderMedia();return}const edit=e.target.closest("[data-edit-publisher-game]");if(edit)return editGame(Number(edit.dataset.editPublisherGame));const res=e.target.closest("[data-resubmit]");if(res)return resubmit(Number(res.dataset.resubmit));const ver=e.target.closest("[data-new-version]");if(ver)return openVersion(Number(ver.dataset.newVersion))});
-  window.addEventListener("lvg:session-hydrated",()=>{if(byId("publisherContent").hidden)boot()});setTimeout(boot,0);
+  function setStatus(message = '', error = false) {
+    const el = $('publisherStatus');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('error', error);
+  }
+
+  function setSubmitProgress(show, text = '', value = 0) {
+    const wrap = $('publisherSubmitProgress');
+    const label = $('publisherSubmitProgressText');
+    const bar = $('publisherSubmitProgressBar');
+    if (!wrap) return;
+    wrap.hidden = !show;
+    if (label) label.textContent = text;
+    if (bar) bar.value = Math.max(0, Math.min(100, Number(value || 0)));
+  }
+
+  function sanitizeStorageStatus() {
+    const el = $('webglStorageStatus');
+    if (!el) return;
+    const state = el.dataset.state;
+    const target = state === 'ready'
+      ? '✓ Hệ thống lưu trữ sẵn sàng.'
+      : state === 'error'
+        ? '⚠ Hệ thống lưu trữ hiện chưa sẵn sàng. Vui lòng thử lại sau hoặc liên hệ quản trị viên.'
+        : 'Đang kiểm tra hệ thống lưu trữ...';
+    if (el.textContent !== target) el.textContent = target;
+  }
+
+  function installStorageSanitizer() {
+    const el = $('webglStorageStatus');
+    if (!el) return;
+    sanitizeStorageStatus();
+    const observer = new MutationObserver(() => sanitizeStorageStatus());
+    observer.observe(el, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['data-state'] });
+  }
+
+  function defaultRequirements(web) {
+    if (!$('reqOs').value) $('reqOs').value = web ? 'Trình duyệt hiện đại' : 'Windows 10';
+    if (!$('reqCpu').value) $('reqCpu').value = web ? 'Bất kỳ' : 'Intel i5 hoặc tương đương';
+    if (!$('reqRam').value) $('reqRam').value = web ? '2 GB' : '8 GB';
+    if (!$('reqGpu').value) $('reqGpu').value = web ? 'WebGL' : 'GTX 1050 hoặc tương đương';
+    if (!$('reqStorage').value) $('reqStorage').value = web ? 'Không cần cài đặt' : '2 GB';
+  }
+
+  function syncType(resetRequirements = false) {
+    const web = $('gameType').value === 'web';
+    $('playUrlLabel').hidden = !web;
+    $('downloadUrlLabel').hidden = web;
+    if (resetRequirements) {
+      $('reqOs').value = '';
+      $('reqCpu').value = '';
+      $('reqRam').value = '';
+      $('reqGpu').value = '';
+      $('reqStorage').value = '';
+    }
+    defaultRequirements(web);
+  }
+
+  function setDownloadMode(mode) {
+    downloadMode = mode === 'url' ? 'url' : 'file';
+    document.querySelectorAll('[data-download-mode]').forEach(button => button.classList.toggle('active', button.dataset.downloadMode === downloadMode));
+    $('downloadFilePanel').hidden = downloadMode !== 'file';
+    $('downloadUrlPanel').hidden = downloadMode !== 'url';
+  }
+
+  function setVersionDownloadMode(mode) {
+    versionDownloadMode = mode === 'url' ? 'url' : 'file';
+    document.querySelectorAll('[data-version-download-mode]').forEach(button => button.classList.toggle('active', button.dataset.versionDownloadMode === versionDownloadMode));
+    $('versionDownloadFilePanel').hidden = versionDownloadMode !== 'file';
+    $('versionDownloadUrlPanel').hidden = versionDownloadMode !== 'url';
+  }
+
+  function revokePreview(item) {
+    if (item?.previewUrl?.startsWith('blob:')) {
+      try { URL.revokeObjectURL(item.previewUrl); } catch {}
+    }
+    if (item) item.previewUrl = '';
+  }
+
+  function newMediaItem(type = 'image') {
+    return { type, source: 'file', url: '', file: null, previewUrl: '', originalUrl: '', persisted: false };
+  }
+
+  function addMedia(item) {
+    media.push(item || newMediaItem('image'));
+    renderMedia();
+  }
+
+  function mediaPreview(item) {
+    const src = item.previewUrl || item.url || item.originalUrl || '';
+    if (!src) return '<span>Chưa chọn nội dung.</span>';
+    if (item.type === 'video') return `<video src="${esc(src)}" muted controls></video><span>${item.source === 'file' ? 'Video đã chọn · chưa upload' : 'Video'}</span>`;
+    return `<img src="${esc(src)}" alt="preview"><span>${item.source === 'file' ? 'Ảnh đã chọn · chưa upload' : 'Ảnh'}</span>`;
+  }
+
+  function sourceButtons(index, source) {
+    return `<div class="source-switch"><button type="button" data-media-source="file" data-media-source-index="${index}" class="${source === 'file' ? 'active' : ''}">Chọn file</button><button type="button" data-media-source="url" data-media-source-index="${index}" class="${source === 'url' ? 'active' : ''}">Dùng URL</button></div>`;
+  }
+
+  function renderMedia() {
+    const root = $('mediaBuilder');
+    if (!root) return;
+    root.innerHTML = media.map((item, index) => {
+      const typeSelect = `<select data-media-type data-media-index-value="${index}"><option value="image" ${item.type === 'image' ? 'selected' : ''}>Ảnh</option><option value="video" ${item.type === 'video' ? 'selected' : ''}>Video</option></select>`;
+      let sourceBody = '';
+      if (item.source === 'existing') {
+        sourceBody = `<div class="selected-file"><strong>Media hiện tại đã lưu</strong><span>Chỉ thay đổi nếu bạn chọn nguồn mới.</span></div><div class="webgl-actions"><button class="mini-btn" type="button" data-media-replace-file="${index}">Thay bằng file</button><button class="mini-btn" type="button" data-media-replace-url="${index}">Thay bằng URL</button></div>`;
+      } else if (item.source === 'url') {
+        sourceBody = `${sourceButtons(index, 'url')}<input data-media-url data-media-url-index="${index}" type="url" value="${esc(item.url || '')}" placeholder="https://example.com/image.jpg"><div class="smart-note">URL được dùng trực tiếp, không upload lại.</div>`;
+      } else {
+        const accept = item.type === 'video' ? 'video/*' : 'image/*';
+        sourceBody = `${sourceButtons(index, 'file')}<input data-media-file data-media-file-index="${index}" type="file" accept="${accept}">${item.file ? `<div class="selected-file"><strong>${esc(item.file.name)}</strong><span>${(item.file.size / 1024 / 1024).toFixed(1)} MB · chỉ upload khi gửi game</span></div>` : '<div class="smart-note">File chỉ được giữ tạm trên trình duyệt, chưa upload.</div>'}`;
+      }
+      return `<article class="media-item" data-media-row="${index}"><div class="media-kind">${typeSelect}<small class="smart-note">Media ${index + 1}</small></div><div class="media-source-body">${sourceBody}<div class="media-preview" data-media-preview="${index}">${mediaPreview(item)}</div></div><button class="mini-btn media-remove" type="button" data-remove-media="${index}">Xóa</button></article>`;
+    }).join('') || '<div class="portal-empty">Chưa có media.</div>';
+  }
+
+  function updateMediaPreview(index) {
+    const el = document.querySelector(`[data-media-preview="${index}"]`);
+    if (el && media[index]) el.innerHTML = mediaPreview(media[index]);
+  }
+
+  async function prepareMediaFile(index, file) {
+    if (!file || !media[index]) return;
+    try {
+      const prepared = window.LVGMediaOptimize?.prepareFile ? await window.LVGMediaOptimize.prepareFile(file) : file;
+      revokePreview(media[index]);
+      media[index].file = prepared;
+      media[index].source = 'file';
+      media[index].url = '';
+      media[index].type = prepared.type.startsWith('video/') ? 'video' : 'image';
+      media[index].previewUrl = URL.createObjectURL(prepared);
+      renderMedia();
+      setStatus('File đã được chuẩn bị. Chưa có dữ liệu nào được upload.');
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
+  function validHttpUrl(value) {
+    try { const url = new URL(value); return url.protocol === 'http:' || url.protocol === 'https:'; } catch { return false; }
+  }
+
+  function validateLocalForm() {
+    const name = $('gameName').value.trim();
+    if (!name) throw new Error('Hãy nhập tên game.');
+    if (!$('description').value.trim()) throw new Error('Hãy nhập mô tả game.');
+    const usable = media.filter(item => {
+      if (item.type !== 'image') return false;
+      if (item.source === 'file') return !!item.file;
+      if (item.source === 'existing') return validHttpUrl(item.originalUrl || item.url);
+      return validHttpUrl(item.url);
+    });
+    if (usable.length < 3) throw new Error('Mỗi game cần ít nhất 3 ảnh hợp lệ.');
+    if ($('gameType').value === 'download' && downloadMode === 'url' && !validHttpUrl($('downloadExternalUrl').value.trim())) throw new Error('URL tải game không hợp lệ.');
+  }
+
+  async function uploadFileDirect(file, area) {
+    if (!file) throw new Error('Chưa chọn file.');
+    const ticket = await api('/api/store/uploads/presign', {
+      method: 'POST',
+      body: { fileName: file.name, contentType: file.type || 'application/octet-stream', area, size: file.size }
+    });
+    const data = ticket.data || {};
+    const response = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+    if (!response.ok) throw new Error(`Không thể upload file (${response.status}). Vui lòng thử lại.`);
+    return data;
+  }
+
+  async function deleteUploadedObject(item) {
+    if (!item) return;
+    try {
+      await api('/api/store/uploads/object', { method: 'DELETE', body: { objectKey: item.objectKey || null, publicUrl: item.publicUrl || item.url || null } });
+    } catch {}
+  }
+
+  async function cleanupUploaded(items) {
+    await Promise.allSettled((items || []).map(deleteUploadedObject));
+  }
+
+  async function buildMediaPayload(uploadedThisSubmit) {
+    const result = [];
+    const totalFiles = Math.max(1, media.filter(item => item.source === 'file' && item.file).length);
+    let uploadedCount = 0;
+    for (let index = 0; index < media.length; index++) {
+      const item = media[index];
+      if (item.source === 'file') {
+        if (!item.file) continue;
+        setSubmitProgress(true, `Đang upload media ${uploadedCount + 1}/${totalFiles}: ${item.file.name}`, 8 + (uploadedCount / totalFiles) * 35);
+        const ticket = await uploadFileDirect(item.file, 'game-media');
+        if (!ticket.publicUrl) throw new Error('Hệ thống chưa tạo được URL cho media.');
+        uploadedThisSubmit.push(ticket);
+        result.push({ type: item.type, url: ticket.publicUrl, thumbnailUrl: null, sortOrder: result.length });
+        uploadedCount++;
+      } else {
+        const url = item.source === 'existing' ? (item.originalUrl || item.url) : item.url;
+        if (!validHttpUrl(url)) continue;
+        result.push({ type: item.type, url, thumbnailUrl: null, sortOrder: result.length });
+      }
+    }
+    return result;
+  }
+
+  async function waitForManagedUrl(inputId, statusId, timeoutMs = 30 * 60 * 1000) {
+    const input = $(inputId);
+    const statusEl = $(statusId);
+    const started = Date.now();
+    let previous = input?.value?.trim() || '';
+    while (Date.now() - started < timeoutMs) {
+      const value = input?.value?.trim() || '';
+      if (value && value !== previous) return value;
+      if (value && !previous) return value;
+      const text = statusEl?.textContent || '';
+      const looksBad = /thất bại|không |lỗi|từ chối/i.test(text) && !/không cần|không có/i.test(text);
+      if (looksBad && statusEl?.style?.color) throw new Error(text);
+      await sleep(250);
+    }
+    throw new Error('Upload build quá thời gian chờ. Vui lòng thử lại.');
+  }
+
+  async function ensureMainWebgl() {
+    if ($('playUrl').value.trim()) return $('playUrl').value.trim();
+    const info = $('webglBuildInfo')?.textContent || '';
+    if (/chưa chọn build/i.test(info)) throw new Error('Hãy chọn ZIP hoặc thư mục WebGL trước khi gửi game.');
+    setSubmitProgress(true, 'Đang upload build WebGL...', 48);
+    $('uploadWebglBuild').click();
+    return waitForManagedUrl('playUrl', 'webglBuildStatus');
+  }
+
+  async function ensureVersionWebgl() {
+    if ($('newVersionPlayUrl').value.trim()) return $('newVersionPlayUrl').value.trim();
+    const info = $('versionWebglInfo')?.textContent || '';
+    if (/chưa chọn build/i.test(info)) throw new Error('Hãy chọn ZIP WebGL cho version mới.');
+    $('uploadVersionWebglBuild').click();
+    return waitForManagedUrl('newVersionPlayUrl', 'versionWebglStatus');
+  }
+
+  async function resolveDownloadUrl(uploadedThisSubmit) {
+    if (downloadMode === 'url') return $('downloadExternalUrl').value.trim();
+    const file = $('downloadFile').files?.[0];
+    if (!file) {
+      if ($('downloadUrl').value.trim()) return $('downloadUrl').value.trim();
+      throw new Error('Hãy chọn file game tải về.');
+    }
+    const limit = window.LVGMediaOptimize?.maxBuildBytes || 2 * 1024 * 1024 * 1024;
+    if (file.size > limit) throw new Error('File game vượt quá giới hạn 2 GB.');
+    setSubmitProgress(true, `Đang upload file game: ${file.name}`, 48);
+    const ticket = await uploadFileDirect(file, 'game-builds');
+    uploadedThisSubmit.push(ticket);
+    return `r2:${ticket.objectKey}`;
+  }
+
+  function collectBasePayload(mediaPayload, playUrl, downloadUrl) {
+    const type = $('gameType').value;
+    const firstImage = mediaPayload.find(item => item.type === 'image')?.url || '';
+    return {
+      name: $('gameName').value.trim(),
+      publisherName: $('publisherName').value.trim(),
+      type,
+      priceCoins: Number($('priceCoins').value || 0),
+      shortDescription: $('shortDescription').value.trim(),
+      description: $('description').value.trim(),
+      coverUrl: firstImage,
+      icon: $('gameIcon').value.trim() || '🎮',
+      badge: $('badge').value.trim(),
+      theme: $('theme').value.trim() || 'default',
+      playUrl: type === 'web' ? playUrl : '',
+      downloadUrl: type === 'download' ? downloadUrl : '',
+      releaseDate: $('releaseDate').value || null,
+      tags: $('tags').value.split(',').map(v => v.trim()).filter(Boolean),
+      media: mediaPayload,
+      versionName: $('versionName').value.trim() || '1.0.0',
+      changelog: $('changelog').value.trim() || 'Cập nhật game',
+      recommendedOs: $('reqOs').value.trim(),
+      recommendedCpu: $('reqCpu').value.trim(),
+      recommendedRam: $('reqRam').value.trim(),
+      recommendedGpu: $('reqGpu').value.trim(),
+      recommendedStorage: $('reqStorage').value.trim()
+    };
+  }
+
+  function showSuccess(title, message) {
+    $('publisherSuccessTitle').textContent = title;
+    $('publisherSuccessMessage').textContent = message;
+    $('publisherSuccessModal').hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function hideSuccess() {
+    $('publisherSuccessModal').hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  async function deleteRemovedMedia(finalMediaUrls) {
+    const removed = editingOriginalMediaUrls.filter(url => !finalMediaUrls.includes(url));
+    await Promise.allSettled(removed.map(url => deleteUploadedObject({ publicUrl: url })));
+  }
+
+  async function deleteReplacedDownload(finalDownloadUrl) {
+    const old = editingOriginalDownloadUrl || '';
+    if (!old || old === finalDownloadUrl || !old.startsWith('r2:')) return;
+    await deleteUploadedObject({ objectKey: old.slice(3) });
+  }
+
+  function clearMediaState() {
+    media.forEach(revokePreview);
+    media = [];
+    editingOriginalMediaUrls = [];
+  }
+
+  function resetForm() {
+    const form = $('gameSubmissionForm');
+    clearMediaState();
+    form.reset();
+    $('editPublisherGameId').value = '';
+    $('publisherFormTitle').textContent = 'Gửi game mới';
+    $('cancelEditGame').hidden = true;
+    $('submitGameButton').textContent = 'Gửi game để Admin duyệt';
+    $('publisherName').value = readSession()?.effectiveDisplayName || readSession()?.displayName || readSession()?.name || '';
+    $('gameType').value = 'web';
+    $('gameIcon').value = '🎮';
+    $('theme').value = 'default';
+    $('versionName').value = '1.0.0';
+    $('changelog').value = 'Bản phát hành đầu tiên';
+    $('coverUrl').value = '';
+    $('playUrl').value = '';
+    $('downloadUrl').value = '';
+    $('downloadExternalUrl').value = '';
+    $('reqOs').value = '';
+    $('reqCpu').value = '';
+    $('reqRam').value = '';
+    $('reqGpu').value = '';
+    $('reqStorage').value = '';
+    editingOriginalDownloadUrl = '';
+    setDownloadMode('file');
+    media = [newMediaItem('image'), newMediaItem('image'), newMediaItem('image')];
+    renderMedia();
+    syncType(false);
+    setSubmitProgress(false);
+    setStatus('');
+  }
+
+  async function submitGame(event) {
+    event.preventDefault();
+    if (submitLocked) return;
+    submitLocked = true;
+    const button = $('submitGameButton');
+    const oldText = button.textContent;
+    const uploadedThisSubmit = [];
+    button.disabled = true;
+    button.textContent = 'Đang gửi...';
+    setStatus('');
+    try {
+      validateLocalForm();
+      setSubmitProgress(true, 'Đang chuẩn bị media...', 5);
+      const mediaPayload = await buildMediaPayload(uploadedThisSubmit);
+      if (mediaPayload.filter(item => item.type === 'image').length < 3) throw new Error('Mỗi game cần ít nhất 3 ảnh hợp lệ.');
+
+      let playUrl = '';
+      let downloadUrl = '';
+      if ($('gameType').value === 'web') playUrl = await ensureMainWebgl();
+      else downloadUrl = await resolveDownloadUrl(uploadedThisSubmit);
+
+      setSubmitProgress(true, 'Đang lưu thông tin game...', 88);
+      const payload = collectBasePayload(mediaPayload, playUrl, downloadUrl);
+      const id = Number($('editPublisherGameId').value || 0);
+      const result = await api(id ? `/api/store/publisher/games/${id}` : '/api/store/publisher/games', { method: id ? 'PUT' : 'POST', body: payload });
+
+      if (id) {
+        await deleteRemovedMedia(mediaPayload.map(item => item.url));
+        await deleteReplacedDownload(downloadUrl);
+      }
+
+      setSubmitProgress(true, 'Hoàn tất.', 100);
+      const title = id ? 'Đã cập nhật game thành công' : 'Đã gửi game thành công';
+      const message = result.message || (id ? 'Game đã được cập nhật và gửi lại để duyệt.' : 'Game của bạn đã được gửi để quản trị viên duyệt.');
+      await Promise.all([loadSubmissions(), loadAnalytics()]);
+      resetForm();
+      showSuccess(title, message);
+    } catch (error) {
+      await cleanupUploaded(uploadedThisSubmit);
+      setSubmitProgress(false);
+      setStatus(error.message || 'Không thể gửi game.', true);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+      submitLocked = false;
+    }
+  }
+
+  function editGame(id) {
+    const item = submissions.find(x => Number(x.game?.id ?? x.id) === Number(id));
+    if (!item) return;
+    resetForm();
+    const game = item.game || item;
+    $('editPublisherGameId').value = game.id;
+    $('publisherFormTitle').textContent = `Sửa: ${game.name}`;
+    $('cancelEditGame').hidden = false;
+    $('submitGameButton').textContent = 'Lưu & gửi lại để duyệt';
+    $('gameName').value = game.name || '';
+    $('publisherName').value = game.publisherName || '';
+    $('gameType').value = game.type || 'web';
+    $('priceCoins').value = game.originalPriceCoins ?? game.priceCoins ?? 0;
+    $('shortDescription').value = game.shortDescription || '';
+    $('description').value = game.description || '';
+    $('gameIcon').value = game.icon || '🎮';
+    $('badge').value = game.badge || '';
+    $('theme').value = game.theme || 'default';
+    $('playUrl').value = game.playUrl || '';
+    $('downloadUrl').value = game.downloadUrl || '';
+    $('releaseDate').value = game.releaseDate ? String(game.releaseDate).slice(0, 10) : '';
+    $('tags').value = (game.tags || []).join(', ');
+    $('reqOs').value = game.requirements?.os || '';
+    $('reqCpu').value = game.requirements?.cpu || '';
+    $('reqRam').value = game.requirements?.ram || '';
+    $('reqGpu').value = game.requirements?.gpu || '';
+    $('reqStorage').value = game.requirements?.storage || '';
+
+    media.forEach(revokePreview);
+    media = (item.media || []).map(m => ({ type: m.type === 'video' ? 'video' : 'image', source: 'existing', url: m.url || '', originalUrl: m.url || '', file: null, previewUrl: '', persisted: true }));
+    editingOriginalMediaUrls = media.map(m => m.originalUrl).filter(Boolean);
+    editingOriginalDownloadUrl = game.downloadUrl || '';
+    if (!media.length) media = [newMediaItem('image'), newMediaItem('image'), newMediaItem('image')];
+    renderMedia();
+
+    if (game.type === 'download') {
+      if (/^https?:\/\//i.test(game.downloadUrl || '')) {
+        setDownloadMode('url');
+        $('downloadExternalUrl').value = game.downloadUrl;
+      } else setDownloadMode('file');
+    }
+    syncType(false);
+    window.scrollTo({ top: $('publisherFormCard').offsetTop - 80, behavior: 'smooth' });
+  }
+
+  async function resubmit(id) {
+    try {
+      const response = await api(`/api/store/publisher/games/${id}/resubmit`, { method: 'POST' });
+      await loadSubmissions();
+      showSuccess('Đã gửi lại game', response.message || 'Game đã được gửi lại để quản trị viên duyệt.');
+    } catch (error) { setStatus(error.message, true); }
+  }
+
+  function openVersion(id) {
+    const item = submissions.find(x => Number(x.game?.id ?? x.id) === Number(id));
+    const game = item?.game || item;
+    if (!game) return;
+    $('versionGameId').value = id;
+    $('newVersionName').value = '';
+    $('newVersionChangelog').value = '';
+    $('newVersionPlayUrl').value = '';
+    $('newVersionDownloadUrl').value = '';
+    $('versionWebglZip').value = '';
+    $('versionDownloadFile').value = '';
+    $('versionDownloadExternalUrl').value = '';
+    $('versionStatus').textContent = '';
+    $('versionWebSection').hidden = game.type !== 'web';
+    $('versionDownloadSection').hidden = game.type !== 'download';
+    setVersionDownloadMode('file');
+    $('versionModal').hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeVersion() {
+    $('versionModal').hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  async function submitVersion(event) {
+    event.preventDefault();
+    const id = Number($('versionGameId').value);
+    const item = submissions.find(x => Number(x.game?.id ?? x.id) === id);
+    const game = item?.game || item;
+    if (!game) return;
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const uploaded = [];
+    button.disabled = true;
+    try {
+      let playUrl = null;
+      let downloadUrl = null;
+      if (game.type === 'web') playUrl = await ensureVersionWebgl();
+      else if (versionDownloadMode === 'url') {
+        const value = $('versionDownloadExternalUrl').value.trim();
+        if (!validHttpUrl(value)) throw new Error('URL tải bản cập nhật không hợp lệ.');
+        downloadUrl = value;
+      } else {
+        const file = $('versionDownloadFile').files?.[0];
+        if (!file) throw new Error('Hãy chọn file bản cập nhật.');
+        const ticket = await uploadFileDirect(file, 'game-builds');
+        uploaded.push(ticket);
+        downloadUrl = `r2:${ticket.objectKey}`;
+      }
+      const response = await api(`/api/store/publisher/games/${id}/versions`, {
+        method: 'POST',
+        body: { versionName: $('newVersionName').value.trim(), changelog: $('newVersionChangelog').value.trim(), playUrl, downloadUrl }
+      });
+      closeVersion();
+      await loadSubmissions();
+      showSuccess('Đã gửi bản cập nhật', response.message || 'Version mới đang chờ quản trị viên duyệt.');
+    } catch (error) {
+      await cleanupUploaded(uploaded);
+      $('versionStatus').textContent = error.message;
+      $('versionStatus').classList.add('error');
+    } finally { button.disabled = false; }
+  }
+
+  async function loadAnalytics() {
+    try {
+      const response = await api('/api/store/publisher/analytics');
+      const data = response.data || {};
+      $('pubTotal').textContent = fmt(data.totalGames);
+      $('pubPublished').textContent = fmt(data.published);
+      $('pubPending').textContent = fmt(data.pending);
+      $('pubPurchases').textContent = fmt(data.purchases);
+      $('pubRevenue').textContent = `${fmt(data.revenueCoins)} LC`;
+    } catch {}
+  }
+
+  function typeLabel(type) { return type === 'download' ? 'Game tải về' : 'Web game'; }
+
+  async function loadSubmissions() {
+    const list = $('submissionList');
+    list.innerHTML = '<div class="portal-empty">Đang tải...</div>';
+    try {
+      const response = await api('/api/store/publisher/games');
+      submissions = response.data || [];
+      list.innerHTML = submissions.length ? submissions.map(item => {
+        const game = item.game || item;
+        const versions = item.versions || [];
+        return `<article class="publisher-game-card"><div class="submission-top"><div><h3>${esc(game.icon || '🎮')} ${esc(game.name)}</h3><div class="meta">${typeLabel(game.type)} · ${fmt(game.priceCoins)} LC · ${(item.media || []).length} media</div></div><span class="status-chip ${String(game.status).toLowerCase()}">${esc(game.status)}</span></div>${game.rejectionReason ? `<p style="color:#ff9dab">Lý do: ${esc(game.rejectionReason)}</p>` : ''}<div class="version-list">${versions.length ? `Version: ${versions.slice(0, 3).map(v => `${esc(v.version)} (${esc(v.status)})`).join(' · ')}` : 'Chưa có version'}</div><div class="publisher-game-actions">${game.status !== 'Published' ? `<button class="mini-btn" data-edit-publisher-game="${game.id}">Sửa game</button>` : ''}${game.status === 'Rejected' ? `<button class="mini-btn primary" data-resubmit="${game.id}">Gửi lại</button>` : ''}${game.status === 'Published' ? `<button class="mini-btn primary" data-new-version="${game.id}">+ Version mới</button>` : ''}</div></article>`;
+      }).join('') : '<div class="portal-empty">Bạn chưa gửi game nào.</div>';
+    } catch (error) {
+      list.innerHTML = `<div class="portal-empty" style="color:#ff9dab">${esc(error.message)}</div>`;
+    }
+  }
+
+  async function boot() {
+    const session = readSession();
+    $('publisherLoginRequired').hidden = !!session?.token;
+    $('publisherContent').hidden = !session?.token;
+    if (!session?.token) return;
+    resetForm();
+    installStorageSanitizer();
+    await Promise.all([loadAnalytics(), loadSubmissions()]);
+  }
+
+  $('gameType')?.addEventListener('change', () => syncType(true));
+  $('addMedia')?.addEventListener('click', () => addMedia());
+  $('gameSubmissionForm')?.addEventListener('submit', submitGame);
+  $('refreshSubmissions')?.addEventListener('click', () => Promise.all([loadAnalytics(), loadSubmissions()]));
+  $('cancelEditGame')?.addEventListener('click', resetForm);
+  $('versionForm')?.addEventListener('submit', submitVersion);
+  $('versionModal')?.addEventListener('click', event => { if (event.target.closest('[data-close-version]')) closeVersion(); });
+
+  $('webglZipFile')?.addEventListener('change', () => { $('playUrl').value = ''; });
+  $('webglFolderFiles')?.addEventListener('change', () => { $('playUrl').value = ''; });
+  $('versionWebglZip')?.addEventListener('change', () => { $('newVersionPlayUrl').value = ''; });
+  $('downloadFile')?.addEventListener('change', event => {
+    const file = event.target.files?.[0];
+    $('downloadFileInfo').innerHTML = file ? `<strong>${esc(file.name)}</strong><span>${(file.size / 1024 / 1024).toFixed(1)} MB · chưa upload</span>` : 'Chưa chọn file. File chỉ được upload khi gửi game.';
+    if (file) $('downloadUrl').value = '';
+  });
+
+  document.addEventListener('click', event => {
+    const download = event.target.closest('[data-download-mode]');
+    if (download) return setDownloadMode(download.dataset.downloadMode);
+    const versionDownload = event.target.closest('[data-version-download-mode]');
+    if (versionDownload) return setVersionDownloadMode(versionDownload.dataset.versionDownloadMode);
+
+    const source = event.target.closest('[data-media-source]');
+    if (source) {
+      const index = Number(source.dataset.mediaSourceIndex);
+      const item = media[index];
+      if (!item) return;
+      revokePreview(item);
+      item.source = source.dataset.mediaSource === 'url' ? 'url' : 'file';
+      item.file = null;
+      item.url = '';
+      renderMedia();
+      return;
+    }
+    const replaceFile = event.target.closest('[data-media-replace-file]');
+    if (replaceFile) {
+      const item = media[Number(replaceFile.dataset.mediaReplaceFile)];
+      if (item) { item.source = 'file'; item.file = null; item.url = ''; renderMedia(); }
+      return;
+    }
+    const replaceUrl = event.target.closest('[data-media-replace-url]');
+    if (replaceUrl) {
+      const item = media[Number(replaceUrl.dataset.mediaReplaceUrl)];
+      if (item) { item.source = 'url'; item.file = null; item.url = ''; renderMedia(); }
+      return;
+    }
+    const remove = event.target.closest('[data-remove-media]');
+    if (remove) {
+      const index = Number(remove.dataset.removeMedia);
+      revokePreview(media[index]);
+      media.splice(index, 1);
+      renderMedia();
+      return;
+    }
+    const edit = event.target.closest('[data-edit-publisher-game]');
+    if (edit) return editGame(Number(edit.dataset.editPublisherGame));
+    const resubmitButton = event.target.closest('[data-resubmit]');
+    if (resubmitButton) return resubmit(Number(resubmitButton.dataset.resubmit));
+    const version = event.target.closest('[data-new-version]');
+    if (version) return openVersion(Number(version.dataset.newVersion));
+  });
+
+  document.addEventListener('change', event => {
+    const fileInput = event.target.closest('[data-media-file]');
+    if (fileInput) return prepareMediaFile(Number(fileInput.dataset.mediaFileIndex), fileInput.files?.[0]);
+    const typeInput = event.target.closest('[data-media-type]');
+    if (typeInput) {
+      const index = Number(typeInput.dataset.mediaIndexValue);
+      if (media[index]) {
+        media[index].type = typeInput.value === 'video' ? 'video' : 'image';
+        renderMedia();
+      }
+    }
+  });
+
+  document.addEventListener('input', event => {
+    const urlInput = event.target.closest('[data-media-url]');
+    if (!urlInput) return;
+    const index = Number(urlInput.dataset.mediaUrlIndex);
+    if (!media[index]) return;
+    media[index].url = urlInput.value.trim();
+    updateMediaPreview(index);
+  });
+
+  $('publisherSuccessView')?.addEventListener('click', () => {
+    hideSuccess();
+    $('publisherSubmissionPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('publisherSuccessNew')?.addEventListener('click', () => {
+    hideSuccess();
+    $('publisherFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  window.addEventListener('lvg:session-hydrated', () => { if ($('publisherContent').hidden) boot(); });
+  setTimeout(boot, 0);
 })();
