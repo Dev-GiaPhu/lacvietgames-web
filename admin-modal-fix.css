@@ -1,0 +1,5 @@
+.admin-modal-card{position:relative!important;padding-top:66px!important}
+.admin-modal-close{position:absolute!important;top:14px!important;right:14px!important;left:auto!important;width:40px!important;height:40px!important;padding:0!important;margin:0!important;display:grid!important;place-items:center!important;z-index:50!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:12px!important;background:rgba(8,13,24,.9)!important;color:#c5cede!important;font-size:25px!important;line-height:1!important;box-shadow:0 8px 24px rgba(0,0,0,.22)!important}
+.admin-modal-close:hover{background:#202b40!important;color:#fff!important;border-color:#43516a!important}
+.admin-modal-card>h2:first-of-type{margin-top:0!important}
+@media(max-width:600px){.admin-modal{padding:10px!important}.admin-modal-card{padding-top:60px!important}.admin-modal-close{top:10px!important;right:10px!important;width:38px!important;height:38px!important}}
