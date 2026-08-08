@@ -4,8 +4,8 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-0330", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-0330", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-0405", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-0405", "lvgGamingDashboard"]
   ]) {
     const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
     if (document.querySelector(`link[${attr}]`)) continue;
@@ -39,24 +39,17 @@ window.APP_CONFIG = {
 
   const nativeStorageSetItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function(key, value) {
-    if (this === localStorage && protectedStorageKeys.has(String(key))) {
-      return nativeStorageSetItem.call(sessionStorage, key, value);
-    }
+    if (this === localStorage && protectedStorageKeys.has(String(key))) return nativeStorageSetItem.call(sessionStorage, key, value);
     return nativeStorageSetItem.call(this, key, value);
   };
 
   function locate() {
-    try {
-      const raw = sessionStorage.getItem(STORE_KEY);
-      if (raw) return { storage: sessionStorage, session: JSON.parse(raw) };
-    } catch {}
+    try { const raw = sessionStorage.getItem(STORE_KEY); if (raw) return { storage: sessionStorage, session: JSON.parse(raw) }; } catch {}
     return null;
   }
   function read() { return locate()?.session || null; }
   function clear() {
-    for (const storage of [sessionStorage, localStorage]) {
-      try { storage.removeItem(STORE_KEY); storage.removeItem(LEGACY_KEY); } catch {}
-    }
+    for (const storage of [sessionStorage, localStorage]) { try { storage.removeItem(STORE_KEY); storage.removeItem(LEGACY_KEY); } catch {} }
     if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = null;
   }
@@ -78,10 +71,7 @@ window.APP_CONFIG = {
   function refreshLoggedOutUi() {
     document.body?.classList.remove("server-authenticated");
     window.dispatchEvent(new CustomEvent("lvg:session-invalid"));
-    if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) {
-      sessionStorage.setItem(RELOAD_KEY, "1");
-      location.reload();
-    }
+    if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) { sessionStorage.setItem(RELOAD_KEY, "1"); location.reload(); }
   }
   function invalidate(reason = "invalid") {
     if (invalidating) return;
@@ -128,31 +118,40 @@ window.APP_CONFIG = {
 
   const initial = read();
   if (initial?.token && initial.token !== COOKIE_SENTINEL && !initial.token.includes(".")) clear();
-  else if (initial?.token && initial.token !== COOKIE_SENTINEL) {
-    const expiresAt = tokenExpiresAt(initial.token);
-    if (expiresAt && expiresAt <= Date.now()) clear();
-  }
+  else if (initial?.token && initial.token !== COOKIE_SENTINEL) { const expiresAt = tokenExpiresAt(initial.token); if (expiresAt && expiresAt <= Date.now()) clear(); }
   if (!read()) sessionStorage.removeItem(RELOAD_KEY);
   scheduleExpiry();
 
   const nativeFetch = window.fetch.bind(window);
   async function cookieProbe() {
-    try {
-      const response = await nativeFetch(`${API_BASE}/api/store/me`, { method:"GET", credentials:"include", cache:"no-store", headers:{"Accept":"application/json"} });
-      return response.ok;
-    } catch { return false; }
+    try { return (await nativeFetch(`${API_BASE}/api/store/me`, { method:"GET", credentials:"include", cache:"no-store", headers:{"Accept":"application/json"} })).ok; }
+    catch { return false; }
   }
-  async function preferSecureCookie(response, url) {
+  function normalizedHeaders(init) {
+    try { return new Headers(init?.headers || {}); } catch { return new Headers(); }
+  }
+  async function handleLoginResponse(response, url, input, requestInit) {
     if (!url.includes("/api/store/auth/login") || !response.ok) return response;
     const payload = await response.clone().json().catch(() => null);
     if (!payload?.data?.token) return response;
-    if (!await cookieProbe()) return response;
-    payload.data.token = COOKIE_SENTINEL;
-    payload.data.sessionMode = "secure-cookie";
-    const headers = new Headers(response.headers);
-    headers.set("Content-Type", "application/json; charset=utf-8");
-    headers.set("Cache-Control", "no-store");
-    return new Response(JSON.stringify(payload), { status:response.status, statusText:response.statusText, headers });
+
+    if (await cookieProbe()) {
+      if (payload.data.token !== COOKIE_SENTINEL) {
+        payload.data.token = COOKIE_SENTINEL;
+        payload.data.sessionMode = "secure-cookie";
+        const headers = new Headers(response.headers);
+        headers.set("Content-Type", "application/json; charset=utf-8");
+        headers.set("Cache-Control", "no-store");
+        return new Response(JSON.stringify(payload), { status:response.status, statusText:response.statusText, headers });
+      }
+      return response;
+    }
+
+    const sentHeaders = normalizedHeaders(requestInit);
+    if (sentHeaders.get("X-LVG-Session-Mode") === "bearer") return response;
+    sentHeaders.set("X-LVG-Session-Mode", "bearer");
+    const fallbackInit = { ...(requestInit || {}), credentials:"include", cache:"no-store", headers:sentHeaders };
+    return nativeFetch(input, fallbackInit);
   }
   function inspectResponse(response, url, authenticated) {
     try {
@@ -179,15 +178,9 @@ window.APP_CONFIG = {
     const requestInit = normalizeApiInit({ ...(init || {}), ...(controller?{signal:controller.signal}:{}) }, true, true);
     requestInit.cache="no-store";
     const timeout = controller ? setTimeout(() => controller.abort(), 8000) : null;
-    try {
-      const response = await nativeFetch(input, requestInit);
-      inspectResponse(response, url, authenticated);
-      return response.clone();
-    } catch (error) {
-      const cached = cachedMeResponse();
-      if (cached) return cached;
-      throw error;
-    } finally { if (timeout) clearTimeout(timeout); }
+    try { const response = await nativeFetch(input, requestInit); inspectResponse(response, url, authenticated); return response.clone(); }
+    catch (error) { const cached = cachedMeResponse(); if (cached) return cached; throw error; }
+    finally { if (timeout) clearTimeout(timeout); }
   }
 
   window.fetch = async function(input, init) {
@@ -201,10 +194,7 @@ window.APP_CONFIG = {
     if (isMeRequest) {
       if (!inflightMe) {
         inflightMe = fetchMeWithTimeout(input, init, url, authenticated);
-        inflightMe.finally(() => {
-          clearTimeout(inflightMeClearTimer);
-          inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 1200);
-        }).catch(() => {});
+        inflightMe.finally(() => { clearTimeout(inflightMeClearTimer); inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 1200); }).catch(() => {});
       }
       const template = await inflightMe;
       return template.clone();
@@ -212,7 +202,7 @@ window.APP_CONFIG = {
 
     const requestInit = normalizeApiInit(init, isApi, authenticated);
     let response = await nativeFetch(input, requestInit);
-    response = await preferSecureCookie(response, url);
+    response = await handleLoginResponse(response, url, input, requestInit);
     inspectResponse(response, url, authenticated);
     return response;
   };
@@ -223,9 +213,7 @@ window.APP_CONFIG = {
   }
 
   window.LVGSession = { read, clear, logout, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount, cookieSentinel:COOKIE_SENTINEL };
-  window.addEventListener("storage", event => {
-    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) { clear(); refreshLoggedOutUi(); }
-  });
+  window.addEventListener("storage", event => { if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) { clear(); refreshLoggedOutUi(); } });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleExpiry(); });
   const removeRemember = () => document.getElementById("serverRemember")?.closest("label")?.remove();
   document.addEventListener("DOMContentLoaded", removeRemember);
@@ -238,7 +226,7 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-0330-runtime-fix";
+const version = "20260809-0405-cookie-first";
 function loadScript(path) { const script=document.createElement("script"); script.src=`${path}?v=${version}`; script.async=false; document.head.appendChild(script); }
 loadScript("./modal-safety.js");
 loadScript("./registration-flow.js");
