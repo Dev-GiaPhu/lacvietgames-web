@@ -4,8 +4,8 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-0305", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-0305", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-0330", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-0330", "lvgGamingDashboard"]
   ]) {
     const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
     if (document.querySelector(`link[${attr}]`)) continue;
@@ -163,10 +163,21 @@ window.APP_CONFIG = {
       }).catch(() => {});
     } catch {}
   }
+  function normalizeApiInit(init, isApi, authenticated) {
+    if (!isApi) return init;
+    const normalized = { ...(init || {}), credentials:"include", ...(authenticated?{cache:"no-store"}:{}) };
+    try {
+      const headers = new Headers(normalized.headers || {});
+      if (read()?.token === COOKIE_SENTINEL && headers.get("Authorization") === `Bearer ${COOKIE_SENTINEL}`) headers.delete("Authorization");
+      normalized.headers = headers;
+    } catch {}
+    return normalized;
+  }
   async function fetchMeWithTimeout(input, init, url, authenticated) {
     const existingSignal = init?.signal || (typeof Request !== "undefined" && input instanceof Request ? input.signal : null);
     const controller = existingSignal ? null : new AbortController();
-    const requestInit = { ...(init || {}), credentials:"include", cache:"no-store", ...(controller?{signal:controller.signal}:{}) };
+    const requestInit = normalizeApiInit({ ...(init || {}), ...(controller?{signal:controller.signal}:{}) }, true, true);
+    requestInit.cache="no-store";
     const timeout = controller ? setTimeout(() => controller.abort(), 8000) : null;
     try {
       const response = await nativeFetch(input, requestInit);
@@ -199,7 +210,7 @@ window.APP_CONFIG = {
       return template.clone();
     }
 
-    const requestInit = isApi ? { ...(init || {}), credentials:"include", ...(authenticated?{cache:"no-store"}:{}) } : init;
+    const requestInit = normalizeApiInit(init, isApi, authenticated);
     let response = await nativeFetch(input, requestInit);
     response = await preferSecureCookie(response, url);
     inspectResponse(response, url, authenticated);
@@ -227,7 +238,7 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-0305-cookie-dashboard";
+const version = "20260809-0330-runtime-fix";
 function loadScript(path) { const script=document.createElement("script"); script.src=`${path}?v=${version}`; script.async=false; document.head.appendChild(script); }
 loadScript("./modal-safety.js");
 loadScript("./registration-flow.js");
