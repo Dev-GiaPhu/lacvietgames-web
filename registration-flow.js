@@ -53,6 +53,10 @@
     };
   }
 
+  // auth.html has its own canonical auth-store.js handlers. Do not attach the legacy registration
+  // submit handler there; only the transport fallback above is shared.
+  if (document.body.classList.contains("auth-page")) return;
+
   const form = document.getElementById("registerForm");
   if (!form) return;
 
