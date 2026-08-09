@@ -93,6 +93,17 @@
     clearCachedSession();
   }
 
+  function labelRewardModes(){
+    const sdkNav=document.getElementById("rewardRulesNav");
+    const sdkLabel=sdkNav?.querySelector("span");
+    if(sdkLabel)sdkLabel.textContent="Reward SDK / Server";
+    const sdkPanel=document.getElementById("rewardRulesPanel");
+    const heading=sdkPanel?.querySelector(".admin-section-head h2");
+    const description=sdkPanel?.querySelector(".admin-section-head p");
+    if(heading)heading.textContent="Reward SDK / Server";
+    if(description)description.textContent="Tích hợp nâng cao cho dữ liệu gameplay như win, level, boss, score hoặc tournament. Cơ chế này vẫn được giữ nguyên bên cạnh Phần thưởng tự động.";
+  }
+
   document.addEventListener("click",event=>{
     if(event.target.closest("#adminLogout"))logoutCookie();
   },true);
@@ -100,13 +111,14 @@
   (async()=>{
     clearCachedSession();
     await probeCookie();
-    const version="20260809-1945-platform-auto-rewards";
+    const version="20260809-1950-platform-auto-rewards";
     try{
       await loadScript(`./admin.js?v=${version}`);
       await loadScript(`./admin-task-events.js?v=${version}`);
       await loadScript(`./admin-security.js?v=${version}`);
       await loadScript(`./admin-game-rewards.js?v=${version}`);
       await loadScript(`./admin-integrations.js?v=${version}`);
+      labelRewardModes();
     }catch(error){
       const gate=document.getElementById("adminGateStatus");
       if(gate)gate.textContent="Không thể tải khu vực quản trị. Vui lòng thử lại.";
