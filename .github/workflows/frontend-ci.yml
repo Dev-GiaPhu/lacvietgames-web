@@ -70,3 +70,13 @@ jobs:
           grep -qi '^access-control-allow-origin: https://dev-giaphu.github.io' /tmp/cors.headers
           grep -qi '^access-control-allow-credentials: true' /tmp/cors.headers
           grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
+      - name: Verify deployed GitHub Pages runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE='https://dev-giaphu.github.io/lacvietgames-web/'
+          curl --fail --silent --show-error --location --max-time 20 \
+            -H 'Cache-Control: no-cache' \
+            "$SITE?smoke=${GITHUB_RUN_ID}" -o /tmp/deployed-index.html
+          grep -q 'config.js?v=20260809-1340-page-aware-runtime' /tmp/deployed-index.html
+          grep -q 'data-page="home"' /tmp/deployed-index.html
