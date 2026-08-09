@@ -36,8 +36,6 @@
     return true;
   }
 
-  // Admin dùng HttpOnly cookie. Mọi request API phải gửi credentials và tuyệt đối không
-  // gửi chuỗi sentinel như một Bearer token thật.
   window.fetch=async function(input,init={}){
     const url=typeof input==="string"?input:input?.url||"";
     if(!url.startsWith(API))return nativeFetch(input,init);
@@ -100,10 +98,9 @@
   },true);
 
   (async()=>{
-    // Không dùng bearer cũ còn sót trong tab. Chỉ phục hồi Admin từ cookie HttpOnly hợp lệ.
     clearCachedSession();
     await probeCookie();
-    const version="20260809-1300-stable-admin";
+    const version="20260809-1945-platform-auto-rewards";
     try{
       await loadScript(`./admin.js?v=${version}`);
       await loadScript(`./admin-task-events.js?v=${version}`);
