@@ -4,8 +4,8 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-1300", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-1300", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-1310", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-1310", "lvgGamingDashboard"]
   ]) {
     const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
     if (document.querySelector(`link[${attr}]`)) continue;
@@ -293,7 +293,7 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-1300-stable-runtime";
+const version = "20260809-1310-stable-runtime";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
