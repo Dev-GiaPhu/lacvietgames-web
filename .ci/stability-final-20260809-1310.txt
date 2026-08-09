@@ -1,0 +1,1 @@
+Temporary CI-only marker for final storefront stability validation. Do not merge.
