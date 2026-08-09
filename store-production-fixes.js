@@ -16,6 +16,9 @@
       .wallet-pack-card,.wallet-section,.wallet-live-pack,.wallet-live-section,.settings-card{background:linear-gradient(155deg,#1a0b0f,#100708)!important;border-color:rgba(233,193,95,.14)!important}
       .wallet-pack-card:hover,.wallet-live-pack:hover{border-color:rgba(233,193,95,.4)!important;background:linear-gradient(145deg,#2a0d14,#15080a)!important}
       .wallet-pack-card small,.wallet-live-pack small,.settings-help,.activity-item small{color:#a58f8c!important}
+      .lvg-dashboard-shell .sidebar-action.sidebar-account-shortcut{background:linear-gradient(145deg,#c3172c,#790d1b)!important;border-color:rgba(233,193,95,.42)!important;color:#fff3d1!important;box-shadow:0 9px 24px rgba(195,23,44,.24)}
+      .lvg-dashboard-shell .sidebar-action.sidebar-account-shortcut:hover{background:linear-gradient(145deg,#da2137,#931021)!important;border-color:rgba(233,193,95,.72)!important;transform:translateY(-1px)}
+      .sidebar-avatar-letter{font-size:14px;font-weight:900;line-height:1;text-transform:uppercase}
       @media(max-width:1180px){.lvg-dashboard-shell .home-content-grid{grid-template-columns:minmax(0,1fr)!important}.lvg-dashboard-shell .home-stats-card{position:static!important;top:auto!important;z-index:1!important;width:100%!important;max-width:100%!important}}
     `;
     document.head.appendChild(style);
@@ -30,6 +33,39 @@
     const payload=await response.json().catch(()=>null);
     if(!response.ok||payload?.success===false){const error=new Error(payload?.message||"Không thể xử lý yêu cầu.");error.status=response.status;error.code=payload?.code;error.payload=payload;throw error}
     return payload;
+  }
+
+  function patchSidebarAccountAction(){
+    const sidebar=document.querySelector(".game-sidebar");
+    if(!sidebar)return;
+    const session=read();
+    const current=sidebar.querySelector(".sidebar-action");
+    if(session?.token){
+      const display=session.effectiveDisplayName||session.displayName||session.name||"Tài khoản";
+      const initial=String(display).trim().charAt(0).toUpperCase()||"T";
+      if(current?.matches('a[href="./profile.html"].sidebar-account-shortcut')){
+        const letter=current.querySelector(".sidebar-avatar-letter");if(letter)letter.textContent=initial;
+        current.setAttribute("title","Tài khoản");current.setAttribute("aria-label","Tài khoản");
+        return;
+      }
+      const replacement=document.createElement("a");
+      replacement.className="sidebar-action sidebar-account-shortcut";
+      replacement.href="./profile.html";
+      replacement.title="Tài khoản";
+      replacement.setAttribute("aria-label","Tài khoản");
+      replacement.innerHTML=`<span class="sidebar-avatar-letter">${esc(initial)}</span>`;
+      if(current)current.replaceWith(replacement);else sidebar.appendChild(replacement);
+      return;
+    }
+    if(current?.matches("button[data-open-server-auth]"))return;
+    const replacement=document.createElement("button");
+    replacement.className="sidebar-action";
+    replacement.type="button";
+    replacement.title="Đăng nhập";
+    replacement.setAttribute("aria-label","Đăng nhập");
+    replacement.setAttribute("data-open-server-auth","");
+    replacement.textContent="＋";
+    if(current)current.replaceWith(replacement);else sidebar.appendChild(replacement);
   }
 
   function patchHomeAccountPanel(){
@@ -89,12 +125,16 @@
   }
 
   ensureStyle();
-  const patch=()=>setTimeout(patchHomeAccountPanel,0);
+  const patch=()=>setTimeout(()=>{patchHomeAccountPanel();patchSidebarAccountAction()},0);
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",patch,{once:true});else patch();
   window.addEventListener("lvg:session-hydrated",patch);
   window.addEventListener("lvg:login-success",patch);
+  window.addEventListener("lvg:session-invalid",patch);
   const app=document.getElementById("app");
   if(app)new MutationObserver(()=>patchHomeAccountPanel()).observe(app,{childList:true,subtree:true});
+  const siteHeader=document.getElementById("siteHeader")||document.querySelector(".site-header");
+  if(siteHeader)new MutationObserver(()=>patchSidebarAccountAction()).observe(siteHeader,{childList:true,subtree:true});
+  setTimeout(patchSidebarAccountAction,80);setTimeout(patchSidebarAccountAction,250);
   document.addEventListener("click",event=>{
     const buy=event.target.closest("#buyGame");
     if(!buy)return;
