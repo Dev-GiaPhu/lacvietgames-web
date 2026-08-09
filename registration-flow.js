@@ -1,8 +1,61 @@
 (() => {
+  const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
+  const COOKIE_SENTINEL = "cookie.session";
+
+  // GitHub Pages and Railway are different sites. Prefer the HttpOnly partitioned cookie, but if
+  // a browser/privacy mode refuses that cookie, retry only the login request in short-lived bearer
+  // mode. This keeps login functional without making bearer storage the default path.
+  if (apiBaseUrl && !window.__LVG_AUTH_TRANSPORT_FALLBACK__) {
+    window.__LVG_AUTH_TRANSPORT_FALLBACK__ = true;
+    const upstreamFetch = window.fetch.bind(window);
+
+    window.fetch = async function(input, init = {}) {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (!url.includes("/api/store/auth/login")) return upstreamFetch(input, init);
+
+      let headers;
+      try { headers = new Headers(init?.headers || {}); } catch { headers = new Headers(); }
+      if (headers.get("X-LVG-Session-Mode") === "bearer") return upstreamFetch(input, init);
+
+      const response = await upstreamFetch(input, init);
+      if (!response.ok) return response;
+      const payload = await response.clone().json().catch(() => null);
+      if (payload?.data?.token !== COOKIE_SENTINEL) return response;
+
+      let cookieWorks = false;
+      const probeController = new AbortController();
+      const probeTimer = setTimeout(() => probeController.abort(), 2500);
+      try {
+        const probe = await upstreamFetch(`${apiBaseUrl}/api/store/me`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Accept": "application/json" },
+          signal: probeController.signal
+        });
+        cookieWorks = probe.ok;
+      } catch {
+        cookieWorks = false;
+      } finally {
+        clearTimeout(probeTimer);
+      }
+
+      if (cookieWorks) return response;
+
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set("X-LVG-Session-Mode", "bearer");
+      return upstreamFetch(input, {
+        ...(init || {}),
+        credentials: "include",
+        cache: "no-store",
+        headers: retryHeaders
+      });
+    };
+  }
+
   const form = document.getElementById("registerForm");
   if (!form) return;
 
-  const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || "").replace(/\/$/, "");
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const byId = (id) => document.getElementById(id);
 
@@ -82,7 +135,7 @@
     if (!valid) return;
 
     if (!apiBaseUrl) {
-      showStatus("Backend chưa được cấu hình.");
+      showStatus("Dịch vụ tài khoản tạm thời chưa sẵn sàng.");
       return;
     }
 
@@ -110,7 +163,7 @@
 
       const registrationToken = payload?.data?.registrationToken;
       if (!registrationToken) {
-        throw new Error("Backend chưa cập nhật luồng xác thực mới. Hãy triển khai lại backend.");
+        throw new Error("Không thể tạo phiên xác thực. Vui lòng thử lại.");
       }
 
       sessionStorage.setItem("lacvietgamesPendingRegistration", JSON.stringify({
