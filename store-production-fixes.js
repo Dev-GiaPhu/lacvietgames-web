@@ -5,6 +5,7 @@
   const read=()=>window.LVGSession?.read?.()||(()=>{try{const raw=sessionStorage.getItem("lacvietgamesStoreSession");return raw?JSON.parse(raw):null}catch{return null}})();
   const fmt=n=>Number(n||0).toLocaleString("vi-VN");
   const esc=(v="")=>String(v).replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+  let patchScheduled=false;
 
   function ensureStyle(){
     if(document.getElementById("storeProductionFixStyle"))return;
@@ -31,7 +32,11 @@
     if(auth&&session?.token&&session.token!==COOKIE_SENTINEL)headers.Authorization=`Bearer ${session.token}`;
     const response=await fetch(`${API}${path}`,{method,credentials:"include",cache:"no-store",headers,body:body?JSON.stringify(body):undefined});
     const payload=await response.json().catch(()=>null);
-    if(!response.ok||payload?.success===false){const error=new Error(payload?.message||"Không thể xử lý yêu cầu.");error.status=response.status;error.code=payload?.code;error.payload=payload;throw error}
+    if(!response.ok||payload?.success===false){
+      const error=new Error(payload?.message||"Không thể xử lý yêu cầu.");
+      error.status=response.status;error.code=payload?.code;error.payload=payload;
+      throw error;
+    }
     return payload;
   }
 
@@ -40,12 +45,15 @@
     if(!sidebar)return;
     const session=read();
     const current=sidebar.querySelector(".sidebar-action");
+
     if(session?.token){
       const display=session.effectiveDisplayName||session.displayName||session.name||"Tài khoản";
       const initial=String(display).trim().charAt(0).toUpperCase()||"T";
       if(current?.matches('a[href="./profile.html"].sidebar-account-shortcut')){
-        const letter=current.querySelector(".sidebar-avatar-letter");if(letter)letter.textContent=initial;
-        current.setAttribute("title","Tài khoản");current.setAttribute("aria-label","Tài khoản");
+        const letter=current.querySelector(".sidebar-avatar-letter");
+        if(letter&&letter.textContent!==initial)letter.textContent=initial;
+        if(current.title!=="Tài khoản")current.title="Tài khoản";
+        if(current.getAttribute("aria-label")!=="Tài khoản")current.setAttribute("aria-label","Tài khoản");
         return;
       }
       const replacement=document.createElement("a");
@@ -57,6 +65,7 @@
       if(current)current.replaceWith(replacement);else sidebar.appendChild(replacement);
       return;
     }
+
     if(current?.matches("button[data-open-server-auth]"))return;
     const replacement=document.createElement("button");
     replacement.className="sidebar-action";
@@ -78,6 +87,18 @@
     const display=session.effectiveDisplayName||session.displayName||session.name||"Người chơi";
     const libraryCount=Array.isArray(session.library)?session.library.length:0;
     panel.innerHTML=`<h3>Tổng quan của bạn</h3><div class="mini-stat-grid"><div class="mini-stat"><small>Lạc Coin</small><strong>${fmt(session.coinBalance)} LC</strong></div><div class="mini-stat"><small>Thư viện</small><strong>${fmt(libraryCount)} game</strong></div><div class="mini-stat"><small>Tài khoản</small><strong>${esc(display)}</strong></div><div class="mini-stat"><small>Trạng thái</small><strong>Đã đăng nhập</strong></div></div><a class="btn btn-secondary" style="width:100%;margin-top:16px" href="./profile.html">Trang cá nhân</a>`;
+  }
+
+  function runPatch(){
+    patchScheduled=false;
+    patchHomeAccountPanel();
+    patchSidebarAccountAction();
+  }
+
+  function schedulePatch(){
+    if(patchScheduled)return;
+    patchScheduled=true;
+    requestAnimationFrame(runPatch);
   }
 
   function setPurchaseFeedback(message,error=false){
@@ -110,7 +131,9 @@
       const gamePayload=await request(`/api/store/games/${encodeURIComponent(slug)}`,{auth:false});
       const game=gamePayload.data||{};
       const price=Number(game.effectivePriceCoins??game.priceCoins??0);
-      if(price>0&&!window.confirm(`Mua ${game.name||"trò chơi"} với ${fmt(price)} Lạc Coin?`)){button.disabled=false;button.dataset.busy="0";return}
+      if(price>0&&!window.confirm(`Mua ${game.name||"trò chơi"} với ${fmt(price)} Lạc Coin?`)){
+        button.disabled=false;button.dataset.busy="0";return;
+      }
       button.textContent=price>0?"Đang mua...":"Đang thêm...";
       const result=await request(`/api/store/games/${Number(game.id)}/purchase`,{method:"POST"});
       const balance=Number(result.data?.balance??session.coinBalance??0);
@@ -125,16 +148,14 @@
   }
 
   ensureStyle();
-  const patch=()=>setTimeout(()=>{patchHomeAccountPanel();patchSidebarAccountAction()},0);
-  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",patch,{once:true});else patch();
-  window.addEventListener("lvg:session-hydrated",patch);
-  window.addEventListener("lvg:login-success",patch);
-  window.addEventListener("lvg:session-invalid",patch);
-  const app=document.getElementById("app");
-  if(app)new MutationObserver(()=>patchHomeAccountPanel()).observe(app,{childList:true,subtree:true});
-  const siteHeader=document.getElementById("siteHeader")||document.querySelector(".site-header");
-  if(siteHeader)new MutationObserver(()=>patchSidebarAccountAction()).observe(siteHeader,{childList:true,subtree:true});
-  setTimeout(patchSidebarAccountAction,80);setTimeout(patchSidebarAccountAction,250);
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",schedulePatch,{once:true});else schedulePatch();
+  window.addEventListener("load",schedulePatch,{once:true});
+  window.addEventListener("lvg:session-hydrated",schedulePatch);
+  window.addEventListener("lvg:login-success",schedulePatch);
+  window.addEventListener("lvg:session-invalid",schedulePatch);
+  setTimeout(schedulePatch,100);
+  setTimeout(schedulePatch,350);
+
   document.addEventListener("click",event=>{
     const buy=event.target.closest("#buyGame");
     if(!buy)return;
