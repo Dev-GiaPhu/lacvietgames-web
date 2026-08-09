@@ -1,0 +1,1 @@
+LacVietGames frontend stability validation marker. This branch is for CI only and will not be merged.
