@@ -4,8 +4,8 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-0417", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-0417", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-1300", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-1300", "lvgGamingDashboard"]
   ]) {
     const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
     if (document.querySelector(`link[${attr}]`)) continue;
@@ -22,7 +22,6 @@ window.APP_CONFIG = {
   const LEGACY_KEY = "lacvietgamesSession";
   const COOKIE_SENTINEL = "cookie.session";
   const API_BASE = window.APP_CONFIG.API_BASE_URL.replace(/\/$/, "");
-  const RELOAD_KEY = "__lvg_session_refreshing";
   const protectedStorageKeys = new Set([STORE_KEY, LEGACY_KEY]);
   let expiryTimer = null;
   let invalidating = false;
@@ -44,15 +43,26 @@ window.APP_CONFIG = {
   };
 
   function locate() {
-    try { const raw = sessionStorage.getItem(STORE_KEY); if (raw) return { storage: sessionStorage, session: JSON.parse(raw) }; } catch {}
+    try {
+      const raw = sessionStorage.getItem(STORE_KEY);
+      if (raw) return { storage: sessionStorage, session: JSON.parse(raw) };
+    } catch {}
     return null;
   }
+
   function read() { return locate()?.session || null; }
+
   function clear() {
-    for (const storage of [sessionStorage, localStorage]) { try { storage.removeItem(STORE_KEY); storage.removeItem(LEGACY_KEY); } catch {} }
+    for (const storage of [sessionStorage, localStorage]) {
+      try {
+        storage.removeItem(STORE_KEY);
+        storage.removeItem(LEGACY_KEY);
+      } catch {}
+    }
     if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = null;
   }
+
   function tokenExpiresAt(token) {
     if (!token || token === COOKIE_SENTINEL || typeof token !== "string" || !token.includes(".")) return null;
     try {
@@ -66,21 +76,26 @@ window.APP_CONFIG = {
       const unixEpochTicks = 621355968000000000n;
       const milliseconds = Number((ticks - unixEpochTicks) / 10000n);
       return Number.isFinite(milliseconds) ? milliseconds : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
+
   function refreshLoggedOutUi() {
     document.body?.classList.remove("server-authenticated");
     window.dispatchEvent(new CustomEvent("lvg:session-invalid"));
-    if (document.readyState !== "loading" && !sessionStorage.getItem(RELOAD_KEY)) { sessionStorage.setItem(RELOAD_KEY, "1"); location.reload(); }
   }
+
   function invalidate(reason = "invalid") {
     if (invalidating) return;
     invalidating = true;
     const hadSession = !!read();
     clear();
     if (hadSession) refreshLoggedOutUi();
-    setTimeout(() => { invalidating = false; }, 0);
+    window.dispatchEvent(new CustomEvent("lvg:session-cleared", { detail:{ reason } }));
+    queueMicrotask(() => { invalidating = false; });
   }
+
   function scheduleExpiry() {
     if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = null;
@@ -89,9 +104,13 @@ window.APP_CONFIG = {
     const expiresAt = tokenExpiresAt(session.token);
     if (!expiresAt) return;
     const remaining = expiresAt - Date.now();
-    if (remaining <= 0) { invalidate("expired"); return; }
+    if (remaining <= 0) {
+      invalidate("expired");
+      return;
+    }
     expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining + 50, 2_000_000_000));
   }
+
   function cacheServerAccount(data) {
     if (!data || typeof data !== "object") return;
     const located = locate();
@@ -110,61 +129,48 @@ window.APP_CONFIG = {
     located.storage.setItem(STORE_KEY, JSON.stringify(session));
     window.dispatchEvent(new CustomEvent("lvg:session-hydrated", { detail: session }));
   }
+
   function cachedMeResponse() {
     const s = read();
     if (!s?.token) return null;
-    return new Response(JSON.stringify({ success:true, data:{ id:s.id,name:s.name,displayName:s.displayName||null,effectiveDisplayName:s.effectiveDisplayName||s.displayName||s.name,email:s.email,role:s.role||"User",coinBalance:Number(s.coinBalance||0),unreadNotifications:Number(s.unreadNotifications||0),library:Array.isArray(s.library)?s.library:[] } }), { status:200, headers:{"Content-Type":"application/json","X-LVG-Cache":"1","Cache-Control":"no-store"} });
+    return new Response(JSON.stringify({
+      success:true,
+      data:{
+        id:s.id,
+        name:s.name,
+        displayName:s.displayName||null,
+        effectiveDisplayName:s.effectiveDisplayName||s.displayName||s.name,
+        email:s.email,
+        role:s.role||"User",
+        coinBalance:Number(s.coinBalance||0),
+        unreadNotifications:Number(s.unreadNotifications||0),
+        library:Array.isArray(s.library)?s.library:[]
+      }
+    }), { status:200, headers:{"Content-Type":"application/json","X-LVG-Cache":"1","Cache-Control":"no-store"} });
   }
 
   const initial = read();
   if (initial?.token && initial.token !== COOKIE_SENTINEL && !initial.token.includes(".")) clear();
-  else if (initial?.token && initial.token !== COOKIE_SENTINEL) { const expiresAt = tokenExpiresAt(initial.token); if (expiresAt && expiresAt <= Date.now()) clear(); }
-  if (!read()) sessionStorage.removeItem(RELOAD_KEY);
+  else if (initial?.token && initial.token !== COOKIE_SENTINEL) {
+    const expiresAt = tokenExpiresAt(initial.token);
+    if (expiresAt && expiresAt <= Date.now()) clear();
+  }
   scheduleExpiry();
 
   const nativeFetch = window.fetch.bind(window);
-  async function cookieProbe() {
-    try { return (await nativeFetch(`${API_BASE}/api/store/me`, { method:"GET", credentials:"include", cache:"no-store", headers:{"Accept":"application/json"} })).ok; }
-    catch { return false; }
-  }
-  function normalizedHeaders(init) {
-    try { return new Headers(init?.headers || {}); } catch { return new Headers(); }
-  }
-  async function handleLoginResponse(response, url, input, requestInit) {
-    if (!url.includes("/api/store/auth/login") || !response.ok) return response;
-    const payload = await response.clone().json().catch(() => null);
-    if (!payload?.data?.token) return response;
 
-    if (await cookieProbe()) {
-      if (payload.data.token !== COOKIE_SENTINEL) {
-        payload.data.token = COOKIE_SENTINEL;
-        payload.data.sessionMode = "secure-cookie";
-        const headers = new Headers(response.headers);
-        headers.set("Content-Type", "application/json; charset=utf-8");
-        headers.set("Cache-Control", "no-store");
-        return new Response(JSON.stringify(payload), { status:response.status, statusText:response.statusText, headers });
-      }
-      return response;
-    }
+  function requestTimeout(url, method) {
+    if (!String(url).startsWith(API_BASE)) return 0;
+    if (String(url).includes("/api/store/me")) return 8000;
+    if (String(url).includes("/api/store/auth/login")) return 12000;
+    if (String(url).includes("/api/Accounts/register") || String(url).includes("forgot-password") || String(url).includes("verify-email")) return 18000;
+    if (String(url).includes("/payments/") || String(url).includes("/webgl-uploads/")) return 20000;
+    return method === "GET" ? 12000 : 15000;
+  }
 
-    const sentHeaders = normalizedHeaders(requestInit);
-    if (sentHeaders.get("X-LVG-Session-Mode") === "bearer") return response;
-    sentHeaders.set("X-LVG-Session-Mode", "bearer");
-    const fallbackInit = { ...(requestInit || {}), credentials:"include", cache:"no-store", headers:sentHeaders };
-    return nativeFetch(input, fallbackInit);
-  }
-  function inspectResponse(response, url, authenticated) {
-    try {
-      if (response.status === 401 && authenticated) queueMicrotask(() => invalidate("server-unauthorized"));
-      else if (response.ok && authenticated && !response.headers.get("X-LVG-Cache") && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) response.clone().json().then(payload => {
-        const data = payload?.data;
-        if (data && !Array.isArray(data)) cacheServerAccount(data);
-      }).catch(() => {});
-    } catch {}
-  }
   function normalizeApiInit(init, isApi, authenticated) {
-    if (!isApi) return init;
-    const normalized = { ...(init || {}), credentials:"include", ...(authenticated?{cache:"no-store"}:{}) };
+    if (!isApi) return init || {};
+    const normalized = { ...(init || {}), credentials:"include", ...(authenticated ? { cache:"no-store" } : {}) };
     try {
       const headers = new Headers(normalized.headers || {});
       if (read()?.token === COOKIE_SENTINEL && headers.get("Authorization") === `Bearer ${COOKIE_SENTINEL}`) headers.delete("Authorization");
@@ -172,62 +178,128 @@ window.APP_CONFIG = {
     } catch {}
     return normalized;
   }
-  async function fetchMeWithTimeout(input, init, url, authenticated) {
+
+  async function fetchWithTimeout(input, init, url, method) {
     const existingSignal = init?.signal || (typeof Request !== "undefined" && input instanceof Request ? input.signal : null);
-    const controller = existingSignal ? null : new AbortController();
-    const requestInit = normalizeApiInit({ ...(init || {}), ...(controller?{signal:controller.signal}:{}) }, true, true);
-    requestInit.cache="no-store";
-    const timeout = controller ? setTimeout(() => controller.abort(), 8000) : null;
-    try { const response = await nativeFetch(input, requestInit); inspectResponse(response, url, authenticated); return response.clone(); }
-    catch (error) { const cached = cachedMeResponse(); if (cached) return cached; throw error; }
-    finally { if (timeout) clearTimeout(timeout); }
+    const timeoutMs = requestTimeout(url, method);
+    if (!timeoutMs || existingSignal) return nativeFetch(input, init);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await nativeFetch(input, { ...(init || {}), signal:controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        const timeout = new Error("Kết nối đang chậm. Vui lòng thử lại.");
+        timeout.code = "REQUEST_TIMEOUT";
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function inspectResponse(response, url, authenticated) {
+    try {
+      if (response.status === 401 && authenticated) {
+        queueMicrotask(() => invalidate("server-unauthorized"));
+      } else if (response.ok && authenticated && !response.headers.get("X-LVG-Cache") && (url.includes("/api/store/me") || url.includes("/api/store/profile"))) {
+        response.clone().json().then(payload => {
+          const data = payload?.data;
+          if (data && !Array.isArray(data)) cacheServerAccount(data);
+        }).catch(() => {});
+      }
+    } catch {}
+  }
+
+  async function fetchMe(input, init, url, authenticated) {
+    const requestInit = normalizeApiInit(init, true, true);
+    requestInit.cache = "no-store";
+    try {
+      const response = await fetchWithTimeout(input, requestInit, url, "GET");
+      inspectResponse(response, url, authenticated);
+      return response.clone();
+    } catch (error) {
+      const cached = cachedMeResponse();
+      if (cached && error?.code === "REQUEST_TIMEOUT") return cached;
+      throw error;
+    }
   }
 
   window.fetch = async function(input, init) {
     const url = typeof input === "string" ? input : input?.url || "";
     const method = String(init?.method || (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
     let headers;
-    try { headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined)); } catch { headers = new Headers(); }
+    try {
+      headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
+    } catch {
+      headers = new Headers();
+    }
     const isApi = url.startsWith(API_BASE);
-    const authenticated = isApi && (headers.has("Authorization") || read()?.token === COOKIE_SENTINEL);
+    const authenticated = isApi && (headers.has("Authorization") || !!read()?.token);
     const isMeRequest = authenticated && method === "GET" && url.includes("/api/store/me");
+
     if (isMeRequest) {
       if (!inflightMe) {
-        inflightMe = fetchMeWithTimeout(input, init, url, authenticated);
-        inflightMe.finally(() => { clearTimeout(inflightMeClearTimer); inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 1200); }).catch(() => {});
+        inflightMe = fetchMe(input, init, url, authenticated);
+        inflightMe.finally(() => {
+          clearTimeout(inflightMeClearTimer);
+          inflightMeClearTimer = setTimeout(() => { inflightMe = null; }, 500);
+        }).catch(() => {});
       }
       const template = await inflightMe;
       return template.clone();
     }
 
     const requestInit = normalizeApiInit(init, isApi, authenticated);
-    let response = await nativeFetch(input, requestInit);
-    response = await handleLoginResponse(response, url, input, requestInit);
+    const response = await fetchWithTimeout(input, requestInit, url, method);
     inspectResponse(response, url, authenticated);
     return response;
   };
 
   async function logout() {
-    try { await nativeFetch(`${API_BASE}/api/store/auth/logout`, { method:"POST", credentials:"include", cache:"no-store", keepalive:true }); } catch {}
+    try {
+      await fetchWithTimeout(`${API_BASE}/api/store/auth/logout`, { method:"POST", credentials:"include", cache:"no-store", keepalive:true }, `${API_BASE}/api/store/auth/logout`, "POST");
+    } catch {}
     clear();
+    refreshLoggedOutUi();
   }
 
-  window.LVGSession = { read, clear, logout, invalidate, tokenExpiresAt, scheduleExpiry, cacheServerAccount, cookieSentinel:COOKIE_SENTINEL };
-  window.addEventListener("storage", event => { if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) { clear(); refreshLoggedOutUi(); } });
+  window.LVGSession = {
+    read,
+    clear,
+    logout,
+    invalidate,
+    tokenExpiresAt,
+    scheduleExpiry,
+    cacheServerAccount,
+    cookieSentinel:COOKIE_SENTINEL
+  };
+
+  window.addEventListener("storage", event => {
+    if ((event.key === STORE_KEY || event.key === LEGACY_KEY) && event.newValue === null && event.oldValue !== null) {
+      clear();
+      refreshLoggedOutUi();
+    }
+  });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleExpiry(); });
+
   const removeRemember = () => document.getElementById("serverRemember")?.closest("label")?.remove();
   document.addEventListener("DOMContentLoaded", removeRemember);
-  new MutationObserver(removeRemember).observe(document.documentElement,{childList:true,subtree:true});
-  const hadSessionAtBoot = !!initial?.token;
-  if (hadSessionAtBoot) setTimeout(() => { if (!read() && !sessionStorage.getItem(RELOAD_KEY)) refreshLoggedOutUi(); }, 2500);
+  new MutationObserver(removeRemember).observe(document.documentElement, { childList:true, subtree:true });
 })();
 
 const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-0417-store-fixes";
-function loadScript(path) { const script=document.createElement("script"); script.src=`${path}?v=${version}`; script.async=false; document.head.appendChild(script); }
+const version = "20260809-1300-stable-runtime";
+function loadScript(path) {
+  const script = document.createElement("script");
+  script.src = `${path}?v=${version}`;
+  script.async = false;
+  document.head.appendChild(script);
+}
 loadScript("./modal-safety.js");
 loadScript("./registration-flow.js");
 loadScript("./store-session.js");
