@@ -40,3 +40,33 @@ jobs:
             echo 'Potential secret material found in Unity package.'
             exit 1
           fi
+      - name: Production connectivity smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://lacvietgames-api-production.up.railway.app'
+          ORIGIN='https://dev-giaphu.github.io'
+
+          curl --fail --silent --show-error --max-time 15 "$API/health/live" | tee /tmp/live.json
+          grep -q '"success":true' /tmp/live.json
+
+          curl --fail --silent --show-error --max-time 15 "$API/health" | tee /tmp/ready.json
+          grep -q '"success":true' /tmp/ready.json
+          grep -q '"database":"ready"' /tmp/ready.json
+
+          curl --fail --silent --show-error --max-time 15 \
+            -H "Origin: $ORIGIN" \
+            "$API/api/store/games" \
+            -D /tmp/games.headers -o /tmp/games.json
+          grep -qi '^access-control-allow-origin: https://dev-giaphu.github.io' /tmp/games.headers
+          grep -q '"success":true' /tmp/games.json
+
+          curl --silent --show-error --max-time 15 -X OPTIONS \
+            "$API/api/store/auth/login" \
+            -H "Origin: $ORIGIN" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            -D /tmp/cors.headers -o /dev/null
+          grep -qi '^access-control-allow-origin: https://dev-giaphu.github.io' /tmp/cors.headers
+          grep -qi '^access-control-allow-credentials: true' /tmp/cors.headers
+          grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
