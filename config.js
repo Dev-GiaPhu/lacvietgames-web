@@ -4,8 +4,8 @@ window.APP_CONFIG = {
 
 (() => {
   for (const [href, marker] of [
-    ["./premium-theme.css?v=20260809-1310", "lvgPremiumTheme"],
-    ["./gaming-dashboard.css?v=20260809-1310", "lvgGamingDashboard"]
+    ["./premium-theme.css?v=20260809-1340", "lvgPremiumTheme"],
+    ["./gaming-dashboard.css?v=20260809-1340", "lvgGamingDashboard"]
   ]) {
     const attr = `data-${marker.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}`;
     if (document.querySelector(`link[${attr}]`)) continue;
@@ -293,27 +293,36 @@ const serverWalletGuardStyle = document.createElement("style");
 serverWalletGuardStyle.textContent = `.header-actions > .coin-pill{display:none!important}body.server-authenticated .header-actions > .coin-pill{display:flex!important}.server-auth-form[hidden],#serverAuthMain[hidden],#serverVerifyForm[hidden],.server-auth-modal[hidden]{display:none!important}.server-auth-modal{overflow-y:auto!important;overscroll-behavior:contain}.server-auth-card{max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;scrollbar-gutter:stable}label:has(#serverRemember){display:none!important}@media(max-height:760px){.server-auth-modal{place-items:start center!important;padding-top:12px!important;padding-bottom:12px!important}.server-auth-card{max-height:calc(100dvh - 24px)!important}}`;
 document.head.appendChild(serverWalletGuardStyle);
 
-const version = "20260809-1310-stable-runtime";
+const version = "20260809-1340-page-aware-runtime";
 function loadScript(path) {
   const script = document.createElement("script");
   script.src = `${path}?v=${version}`;
   script.async = false;
   document.head.appendChild(script);
 }
-loadScript("./modal-safety.js");
+
+const runtimePage = document.body?.dataset?.page || "";
+const authPage = document.body?.classList.contains("auth-page");
+
+// Transport fallback is tiny and must be installed before any login handler.
 loadScript("./registration-flow.js");
-loadScript("./store-session.js");
-loadScript("./header-authority.js");
-loadScript("./notification-center-v2.js");
-loadScript("./login-campaigns.js");
-loadScript("./account-enhancements.js");
-loadScript("./display-name-global.js");
-loadScript("./store-experience.js");
-loadScript("./library-download.js");
-loadScript("./profile-security.js");
-loadScript("./iframe-hardening.js");
-loadScript("./tasks-nav.js");
-loadScript("./footer-links.js");
-loadScript("./protected-pages.js");
-loadScript("./store-production-fixes.js");
-if (document.body?.classList.contains("admin-page")) loadScript("./admin-security.js");
+
+if (!authPage) {
+  // Shared storefront shell.
+  loadScript("./modal-safety.js");
+  loadScript("./store-session.js");
+  loadScript("./header-authority.js");
+  loadScript("./notification-center-v2.js");
+  loadScript("./account-enhancements.js");
+  loadScript("./display-name-global.js");
+  loadScript("./footer-links.js");
+  loadScript("./protected-pages.js");
+  loadScript("./store-production-fixes.js");
+
+  // Page-specific features. Do not download observers/controllers that cannot be used here.
+  if (runtimePage === "home") loadScript("./login-campaigns.js");
+  if (["home", "catalog", "game"].includes(runtimePage)) loadScript("./store-experience.js");
+  if (runtimePage === "library") loadScript("./library-download.js");
+  if (["profile", "editProfile"].includes(runtimePage)) loadScript("./profile-security.js");
+  if (["home", "catalog", "game", "library", "wallet", "profile", "editProfile", "play"].includes(runtimePage)) loadScript("./tasks-nav.js");
+}
