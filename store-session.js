@@ -42,6 +42,10 @@
     const headers = { "Content-Type":"application/json", "Accept":"application/json" };
     if (auth && session?.token && session.token !== COOKIE_SENTINEL) headers.Authorization = `Bearer ${session.token}`;
     if (auth && !session?.token) throw Object.assign(new Error("Bạn cần đăng nhập."), { code:"AUTH_REQUIRED" });
+
+    const controller = new AbortController();
+    const timeoutMs = path.includes("/auth/login") ? 12000 : path.includes("/me") ? 7000 : 15000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response;
     try {
       response = await fetch(`${API}${path}`, {
@@ -49,10 +53,18 @@
         credentials:"include",
         cache:"no-store",
         headers,
-        body: body ? JSON.stringify(body) : undefined
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal
       });
-    } catch {
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        const timeout = new Error("Kết nối đang chậm. Vui lòng thử lại.");
+        timeout.code = "REQUEST_TIMEOUT";
+        throw timeout;
+      }
       throw new Error("Không thể kết nối LacVietGames. Vui lòng thử lại.");
+    } finally {
+      clearTimeout(timer);
     }
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.success === false) {
@@ -147,7 +159,9 @@
     try {
       const result=await request("/api/store/auth/login",{method:"POST",body:{email:form.querySelector("#serverLoginEmail").value.trim().toLowerCase(),password:form.querySelector("#serverLoginPassword").value}});
       saveSession(result);
-      await hydrate();
+      // The login response already contains the authoritative account snapshot. Refreshing /me is
+      // helpful but must never block a successful login when the API is under load.
+      await hydrate().catch(()=>null);
       close(); toast("Đăng nhập thành công.");
       if(typeof pendingAction==="function")await pendingAction();
       pendingAction=null;
